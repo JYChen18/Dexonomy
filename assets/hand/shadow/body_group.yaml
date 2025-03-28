@@ -1,0 +1,8 @@
+body_group: [
+    [rh_ffdistal,rh_ffmiddle,rh_ffproximal],
+    [rh_mfdistal,rh_mfmiddle,rh_mfproximal],
+    [rh_rfdistal,rh_rfmiddle,rh_rfproximal],
+    [rh_lfdistal,rh_lfmiddle,rh_lfproximal],
+    [rh_thdistal,rh_thmiddle,rh_thproximal],
+    [rh_palm,rh_lfmetacarpal]
+]

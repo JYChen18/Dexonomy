@@ -1,0 +1,24 @@
+grasp:
+  outer_iter: 20
+  inner_iter: 10
+  ho_target_dist: 0.001
+  ho_margin: 0.002
+  coll_filter: 
+    hh_threshold: 0.0
+    ho_threshold: 0.0
+  body_filter: True
+  qp_filter:
+    threshold: 0.001
+    miu_coef: [0.6, 0.02]
+    force_closure: ${force_closure}
+  
+pregrasp:
+  outer_iter: 20
+  inner_iter: 10
+  ho_target_dist: 0.025
+  ho_margin: 0.025
+  coll_filter: 
+    hh_threshold: 0.0
+    ho_threshold: 0.02
+
+cust_log_dir: ${log_dir}

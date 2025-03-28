@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dexonomy"
+description = "Dexonomy: Synthesizing All Dexterous Grasp Types in a Grasp Taxonomy"
+version = "0.1"
+authors = [{name = "Jiayi Chen", email = "jiayichen@pku.edu.cn"}]
+dependencies = [
+    "numpy==1.26.4",
+    "warp-lang==1.6.2",
+    "mujoco==3.2.7",
+    "trimesh==4.5.3",
+    "matplotlib",
+    "pyyaml",
+    "qpsolvers[clarabel]",
+    "transforms3d",
+    "hydra-core",
+    "usd-core",
+]
+
+[project.optional-dependencies]
+cuda = ["pytorch>=2.0.1"]
+
+[tool.setuptools]
+packages = ["dexonomy"]

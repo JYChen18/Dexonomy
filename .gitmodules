@@ -1,0 +1,3 @@
+[submodule "third_party/mujoco_menagerie"]
+	path = third_party/mujoco_menagerie
+	url = git@github.com:google-deepmind/mujoco_menagerie.git

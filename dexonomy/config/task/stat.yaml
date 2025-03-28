@@ -1,0 +1,4 @@
+scale_fig: False
+diversity: False
+contact_number: False
+cust_log_dir: ${log_dir}

@@ -1,0 +1,60 @@
+grasp_pose: [0,0,0,1,0,0,0]     # No need to change 
+grasp_qpos: [-0.09, 1.0, 0.8, 0.8, -0.1, 1.06, 0.8, 0.8, 0.08, 1.02, 0.8, 0.8, 0.0, 0.03, 0.88, 0.8, 0.8, -0.05, 1.0, -0.12, 0.32, 0.56]
+hand_worldframe_contacts: [
+    [ 'f_distal_pst', 0 ],
+    [ 'f_middle', 0 ],
+    [ 'f_proximal', 0 ],
+
+    [ 'f_distal_pst', 0 ],
+    [ 'f_middle', 0 ],
+    [ 'f_proximal', 0 ],
+
+    [ 'f_distal_pst', 0 ],
+    [ 'f_middle', 0 ],
+    [ 'f_proximal', 0 ],
+
+    [ 'f_distal_pst', 0 ],
+    [ 'f_middle', 0 ],
+    [ 'f_proximal', 0 ],
+
+    [0.053439,-0.068618,0.120025,0.006945,0.715375,0.698706],
+    [0.034226,-0.012000,0.116197,0.000978,-0.999999,0.000978],
+    [0.006835,-0.011000,0.102142,0.001840,-0.999996,-0.002368],
+    [-0.011484,-0.012000,0.100742,0.000978,-0.999999,0.000978]
+]
+hand_contact_body_names: [
+    "rh_ffdistal",
+    "rh_ffmiddle",
+    "rh_ffproximal",
+
+    "rh_mfdistal",
+    "rh_mfmiddle",
+    "rh_mfproximal",
+
+    "rh_rfdistal",
+    "rh_rfmiddle",
+    "rh_rfproximal",
+
+    "rh_lfdistal",
+    "rh_lfmiddle",
+    "rh_lfproximal",
+
+    "rh_thdistal",
+    "rh_palm",
+    "rh_palm",
+    "rh_palm"
+]
+necessary_contact_body_names: [
+    ["rh_ffdistal","rh_ffmiddle","rh_ffproximal"],
+
+    ["rh_mfdistal","rh_mfmiddle","rh_mfproximal"],
+
+    ["rh_rfdistal","rh_rfmiddle","rh_rfproximal"],
+
+    ["rh_lfdistal","rh_lfmiddle","rh_lfproximal"],
+
+    ["rh_thdistal"],
+    ["rh_palm"],
+]
+obj_gravity_direction: [-1.0, 0., 0., 0, 0, 0]
+

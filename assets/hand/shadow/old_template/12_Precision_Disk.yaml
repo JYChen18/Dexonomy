@@ -1,0 +1,43 @@
+grasp_pose: [0,0,0,1,0,0,0]     # No need to change 
+grasp_qpos: [-0.23, 0.03, 0.75, 0.75, 0.01, 0.03, 0.75, 0.75, -0.17, 0.0, 0.8, 0.8, 0.09, -0.32, -0.01, 0.86, 0.86, -0.21, 0.63, -0.16, 0.38, 0.42]
+hand_worldframe_contacts: [
+    [ 'f_distal_pst', 0 ],
+    [ 'f_distal_pst', 0 ],
+    [ 'f_distal_pst', 0 ],
+    [-0.041244,-0.046222,0.171374,0.896628,-0.019925,-0.442336],
+
+    [ 'th_distal_pst', 0 ],
+    [ 'th_middle', 0 ],
+
+    ['palm', 1],
+    
+]
+hand_contact_body_names: [
+    "rh_ffdistal",
+
+    "rh_mfdistal",
+
+    "rh_rfdistal",
+
+    "rh_lfdistal",
+
+    "rh_thdistal",
+    "rh_thmiddle",
+
+    "rh_palm"
+]
+necessary_contact_body_names: [
+    [ "rh_ffdistal" ],
+
+    [ "rh_mfdistal" ],
+
+    [ "rh_rfdistal" ],
+
+    [ "rh_lfdistal"],
+
+    [ "rh_thdistal","rh_thmiddle" ],
+    ["rh_palm"]
+
+]
+obj_gravity_direction: [0., -1.0, 0., 0, 0, 0]
+

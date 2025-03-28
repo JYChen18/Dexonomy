@@ -1,0 +1,39 @@
+epoch: 5
+obj_batch_size: 10
+hand_batch_size: 64
+device: "cuda:0"
+
+object:
+  root_folder: ${asset_root}/object/DGN_obj/processed_data
+  selection:
+    id_lst_path:  ${asset_root}/object/DGN_obj/valid_split/all.json
+    id:   
+    start: 0
+    end: 1000
+    shuffle: False 
+  load_pose: ${has_floor_z0}
+  scale_range: [0.05, 0.2]
+  init_point_num: 1024
+  init_inplane_num: 8
+
+matcher:
+  opt_iter: 100
+  loss_filter:
+    enable: True
+    pos_thre: 0.001
+    normal_thre: 0.3
+  coll_filter: 
+    enable: True
+  qp_filter: 
+    enable: True
+    batched: True
+    max_batch_size: 30000 
+    threshold: 0.01
+    miu_coef: [0.2, 0.001]    # This should be small
+    force_closure: ${force_closure}
+  fps_filter:
+    enable: True
+    max_num: 10
+    min_dist: 0.02
+
+cust_log_dir: ${log_dir}

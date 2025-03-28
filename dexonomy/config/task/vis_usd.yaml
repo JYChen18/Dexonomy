@@ -1,0 +1,5 @@
+max_num: 100
+template_seperate: True
+normalize_hand: False
+data_type: ["grasp"] #, "pregrasp", "squeezed"]
+cust_log_dir: ${log_dir}
