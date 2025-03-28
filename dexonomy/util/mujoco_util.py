@@ -307,8 +307,12 @@ class MjHO:
 
 
 class RobotKinematics:
-    def __init__(self, xml_path, vis_mesh_mode="visual"):
-        assert vis_mesh_mode == "visual" or vis_mesh_mode == "collision"
+    def __init__(self, xml_path, vis_mesh_mode=None):
+        assert (
+            vis_mesh_mode == "visual"
+            or vis_mesh_mode == "collision"
+            or vis_mesh_mode is None
+        )
         spec = mujoco.MjSpec.from_file(xml_path)
         self.mj_model = spec.compile()
         self.mj_data = mujoco.MjData(self.mj_model)
@@ -324,9 +328,9 @@ class RobotKinematics:
             body_name = self.mj_model.body(body_id).name
             self.body_id_dict[body_name] = body_id
 
-            if geom.contype == 0 and vis_mesh_mode == "collision":
+            if geom.contype == 0 and vis_mesh_mode != "visual":
                 continue
-            if geom.contype != 0 and vis_mesh_mode == "visual":
+            if geom.contype != 0 and vis_mesh_mode != "collision":
                 continue
 
             if mesh_id == -1:  # Primitives

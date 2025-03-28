@@ -9,7 +9,7 @@ Official implementation of *Dexonomy: Synthesizing All Dexterous Grasp Types in 
     <img src="img/teaser.png" width=100% >
 </div>
 
-For **any** grasp type, object, and articulated robotic hand, our algorithm quickly synthesizes *contact-rich, penetration-free, and physically plausible* dexterous grasps, starting from only one human-annotated template per hand and grasp type.
+For **any grasp type**, **any object**, and **any articulated robotic hand**, our algorithm quickly synthesizes *contact-rich, penetration-free, and physically plausible* dexterous grasps, starting from only **one** human-annotated template per hand and grasp type.
 
 
 ## Installation

@@ -18,7 +18,7 @@ from util.torch_rot_util import (
     torch_inv_transform_points,
 )
 from util.obj_loader import get_object_dataloader
-from util.hand_loader import get_hand_dataloader
+from util.hand_loader import HandTemplateLibrary
 from util.qp_batched import get_qp_error_batched
 from util.qp_single import ContactQP
 
