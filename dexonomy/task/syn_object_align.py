@@ -132,7 +132,6 @@ class OptMatcher:
         for i in range(self.opt_iter):
             optimizer.zero_grad()
             opt_r = torch_quaternion_to_matrix(opt_q)
-            print(nf_hc.shape, opt_t.shape, opt_r.shape)
             of_hc = torch_transform_points(
                 nf_hc,
                 opt_r,
@@ -175,9 +174,9 @@ class OptMatcher:
                 )[0]
             else:
                 loss_valid_idx = torch.arange(b * h, device=self.device)
-            # logging.warning(
-            #     f"Loss filtering remain {loss_valid_idx.shape[0]} out of {b * h}"
-            # )
+            logging.debug(
+                f"Loss filtering remain {loss_valid_idx.shape[0]} out of {b * h}"
+            )
             obj_id_lst = loss_valid_idx // h
 
             of_nf_quat = torch_normalize_vector(opt_q)
@@ -227,12 +226,8 @@ class OptMatcher:
                     dim=-1,
                 ).view(b * h, 7)[loss_valid_idx],
                 "hand_contacts": wf_hc.view(b * h, -1, 6)[loss_valid_idx],
-                "grasp_qpos": grasp_qpos.repeat(b, 1, 1).view(b * h, -1)[
-                    loss_valid_idx
-                ],
-                "hand_evolution_num": hand_evolution_num.repeat(b, 1, 1).view(b * h)[
-                    loss_valid_idx
-                ],
+                "grasp_qpos": grasp_qpos.view(b * h, -1)[loss_valid_idx],
+                "hand_evolution_num": hand_evolution_num.view(b * h)[loss_valid_idx],
                 "obj_cp": wf_op.view(b * h, -1, 3)[loss_valid_idx],
                 "obj_cn": wf_on.view(b * h, -1, 3)[loss_valid_idx],
                 "obj_scale": opt_s.view(b * h, 1)[loss_valid_idx],
@@ -249,7 +244,7 @@ class OptMatcher:
 
         if self.coll_filter["enable"]:
             coll_valid_idx = self.collision_based_filter(
-                hf_hsk.repeat(b, 1, 1, 1).view(b * h, -1, 3)[loss_valid_idx],
+                hf_hsk.view(b * h, -1, 3)[loss_valid_idx],
                 result_dict["grasp_pose"],
                 result_dict["obj_pose"],
                 result_dict["obj_scale"],
@@ -258,9 +253,9 @@ class OptMatcher:
             )
             for k, v in result_dict.items():
                 result_dict[k] = v[coll_valid_idx]
-            # logging.warning(
-            #     f"Collision filtering remain {coll_valid_idx.sum()} out of {remain_number}"
-            # )
+            logging.debug(
+                f"Collision filtering remain {coll_valid_idx.sum()} out of {remain_number}"
+            )
             remain_number = coll_valid_idx.sum()
             if remain_number == 0:
                 return result_dict
@@ -304,12 +299,12 @@ class OptMatcher:
     @torch.no_grad()
     def collision_based_filter(
         self,
-        handframe_skeleton,
-        grasp_pose,
-        obj_pose,
-        obj_scale,
+        handframe_skeleton: torch.Tensor,
+        grasp_pose: torch.Tensor,
+        obj_pose: torch.Tensor,
+        obj_scale: torch.Tensor,
         wm_id_lst,
-        has_floor_z0,
+        has_floor_z0: bool,
     ):
         query_shape = grasp_pose.shape[0]
         if self.coll_buffer_length < query_shape:
@@ -430,51 +425,60 @@ def task_syn_obj(configs):
     )
     logging.warning(f"Hand template name: {configs.template_name}")
 
-    obj_loader = get_object_dataloader(
-        task_config.object, task_config.obj_batch_size, configs.n_worker
-    )
-    hand_loader = get_hand_dataloader(
+    obj_loader = get_object_dataloader(task_config.object, configs.n_worker)
+    hand_library = HandTemplateLibrary(
         xml_path=configs.hand.xml_path,
         skeleton_path=configs.hand_skeleton_path,
         template_name=configs.template_name,
-        num_hand_workers=configs.n_worker,
-        hand_loader_length=len(obj_loader),
-        batch_size=task_config.hand_batch_size,
         init_template_dir=configs.init_template_dir,
         new_template_dir=(
             configs.new_template_dir if configs.update_template is not False else None
         ),
+        max_data_buffer=configs.max_template_buffer,
+        num_workers=configs.n_worker,
     )
     matcher = OptMatcher(task_config.device, **task_config.matcher)
 
     for eee in range(task_config.epoch):
         logging.warning(f"Epoch {eee}")
-        for obj_samples, hand_temp_dict in zip(obj_loader, hand_loader):
-            # load object
+        for obj_samples in obj_loader:
+            obj_samples = {
+                k: (
+                    v.to(task_config.device, non_blocking=True)
+                    if isinstance(v, torch.Tensor)
+                    else v
+                )
+                for k, v in obj_samples.items()
+            }
+
             wm_id_lst = matcher.load_warp_mesh(
                 obj_samples["tm_mesh"], obj_samples["obj_name"]
             )
 
             sampled_rot, sampled_trans, sampled_scale = sample_init_poses(
-                obj_samples["sampled_points"].to(task_config.device),
-                obj_samples["sampled_normals"].to(task_config.device),
+                obj_samples["sampled_points"],
+                obj_samples["sampled_normals"],
                 task_config.object.init_inplane_num,
                 task_config.object.scale_range,
             )
 
+            hand_temp_dict = hand_library.get_batched_data(
+                sampled_rot.shape[:2], task_config.device
+            )
+
             result_dict = matcher.matching(
-                hand_temp_dict["nf_hc"].to(task_config.device),
-                hand_temp_dict["hf_hsk"].to(task_config.device),
-                hand_temp_dict["hf_ogd"].to(task_config.device),
-                hand_temp_dict["nf_hf_rot"].to(task_config.device),
-                hand_temp_dict["nf_hf_trans"].to(task_config.device),
-                hand_temp_dict["grasp_qpos"].to(task_config.device),
-                hand_temp_dict["evolution_num"].to(task_config.device),
+                hand_temp_dict["nf_hc"],
+                hand_temp_dict["hf_hsk"],
+                hand_temp_dict["hf_ogd"],
+                hand_temp_dict["nf_hf_rot"],
+                hand_temp_dict["nf_hf_trans"],
+                hand_temp_dict["grasp_qpos"],
+                hand_temp_dict["evolution_num"],
                 sampled_rot,
                 sampled_trans,
                 sampled_scale,
-                obj_samples["of_ogc"].to(task_config.device),
-                obj_samples["swf_of_pose"].to(task_config.device),
+                obj_samples["of_ogc"],
+                obj_samples["swf_of_pose"],
                 wm_id_lst,
                 task_config.object.scale_range,
                 configs.obj_mass,
@@ -516,7 +520,7 @@ def task_syn_obj(configs):
                 obj_path = obj_samples["obj_path"][obj_id]
 
                 grasp_dir = os.path.join(
-                    configs.init_dir, hand_temp_dict["name"], obj_name
+                    configs.init_dir, hand_temp_dict["hand_template_name"], obj_name
                 )
                 os.makedirs(grasp_dir, exist_ok=True)
                 count = len(os.listdir(grasp_dir)) + 1
@@ -525,9 +529,9 @@ def task_syn_obj(configs):
                 np.save(
                     f"{grasp_dir}/{eee}_{count}.npy",
                     {
-                        "evolution_num": np.array([hand_evolution_num]),
+                        "evolution_num": hand_evolution_num,
                         "hand_type": configs.hand_name,
-                        "hand_template_name": hand_temp_dict["name"],
+                        "hand_template_name": hand_temp_dict["hand_template_name"],
                         "grasp_pose": grasp_pose,
                         "grasp_qpos": grasp_qpos,
                         "hand_worldframe_contacts": hand_c,
@@ -541,7 +545,7 @@ def task_syn_obj(configs):
                         "obj_path": obj_path,
                         "obj_scale": obj_scale,
                         "obj_pose": obj_pose,
-                        "obj_pose_id": obj_samples["obj_pose_id"][obj_id].numpy(),
+                        "obj_pose_id": obj_samples["obj_pose_id"][obj_id].cpu().numpy(),
                         "obj_gravity_center": obj_gc,
                         "obj_gravity_direction": obj_gd,
                     },

@@ -16,7 +16,7 @@ def torch_pose_multiply(r1, t1, r2, t2):
     return r1 @ r2, t2 @ r1.transpose(-1, -2) + t1
 
 
-def torch_transform_points(points: torch.tensor, rot: torch.tensor, trans=0, scale=1):
+def torch_transform_points(points: torch.Tensor, rot: torch.Tensor, trans=0, scale=1):
     if points.shape[-1] == 6:
         resulted_points = torch.cat(
             [
@@ -33,7 +33,7 @@ def torch_transform_points(points: torch.tensor, rot: torch.tensor, trans=0, sca
 
 
 def torch_inv_transform_points(
-    points: torch.tensor, rot: torch.tensor, trans=0, scale=1
+    points: torch.Tensor, rot: torch.Tensor, trans=0, scale=1
 ):
     if points.shape[-1] == 6:
         resulted_points = torch.cat(
@@ -48,7 +48,6 @@ def torch_inv_transform_points(
     else:
         raise NotImplementedError
     return resulted_points
-
 
 
 def torch_axis_angle_rotation(axis: str, angle: torch.Tensor) -> torch.Tensor:

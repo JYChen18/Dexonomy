@@ -3,13 +3,18 @@ import numpy as np
 import transforms3d.quaternions as tq
 from scipy.spatial.transform import Rotation as R
 from scipy.spatial.transform import Slerp
+import numpy as np
 
 
-def np_normalize_vector(v):
+def np_array32(x: np.ndarray) -> np.ndarray:
+    return np.array(x, dtype=np.float32)
+
+
+def np_normalize_vector(v: np.ndarray) -> np.ndarray:
     return v / np.maximum(np.linalg.norm(v, axis=-1, keepdims=True), 1e-12)
 
 
-def np_interplote_pose(pose1: np.array, pose2: np.array, step: int) -> np.array:
+def np_interplote_pose(pose1: np.ndarray, pose2: np.ndarray, step: int) -> np.ndarray:
     trans1, quat1 = pose1[:3], pose1[3:7]
     trans2, quat2 = pose2[:3], pose2[3:7]
     slerp = Slerp([0, 1], R.from_quat([quat1, quat2], scalar_first=True))
@@ -18,12 +23,12 @@ def np_interplote_pose(pose1: np.array, pose2: np.array, step: int) -> np.array:
     return np.concatenate([trans_interp, quat_interp], axis=1)
 
 
-def np_interplote_qpos(qpos1: np.array, qpos2: np.array, step: int) -> np.array:
+def np_interplote_qpos(qpos1: np.ndarray, qpos2: np.ndarray, step: int) -> np.ndarray:
     return np.linspace(qpos1, qpos2, step + 1)[1:]
 
 
 def np_normal_to_rot(
-    axis_0, rot_base1=np.array([[0, 1, 0]]), rot_base2=np.array([[0, 0, 1]])
+    axis_0, rot_base1=np_array32([[0, 1, 0]]), rot_base2=np_array32([[0, 0, 1]])
 ):
     proj_xy = np.abs(np.sum(axis_0 * rot_base1, axis=-1, keepdims=True))
     axis_1 = np.where(proj_xy > 0.99, rot_base2, rot_base1)
@@ -38,7 +43,7 @@ def np_normal_to_rot(
 
 def np_transform_points(points, rot, trans=0.0, scale=1):
     if isinstance(points, List):
-        points = np.array(points)
+        points = np_array32(points)
     if len(points.shape) == 1:
         unsqueeze_flag = True
         points = points[None]
@@ -67,7 +72,7 @@ def np_transform_points(points, rot, trans=0.0, scale=1):
 
 def np_inv_transform_points(points, rot, trans=0.0, scale=1):
     if isinstance(points, List):
-        points = np.array(points)
+        points = np_array32(points)
     if len(points.shape) == 1:
         unsqueeze_flag = True
         points = points[None]
@@ -97,8 +102,8 @@ def np_inv_transform_points(points, rot, trans=0.0, scale=1):
 def np_get_delta_qpos(qpos1, qpos2):
     # qpos: [x, y, z, qw, qx, qy, qz]
     delta_pos = np.linalg.norm(qpos1[:3] - qpos2[:3])  # (1)
-    q1_inv = tq.qinverse(qpos1[3:])
-    q_rel = tq.qmult(qpos2[3:], q1_inv)
+    q1_inv = tq.qinverse(qpos1[3:]).astype(np.float32)
+    q_rel = tq.qmult(qpos2[3:], q1_inv).astype(np.float32)
     if np.abs(q_rel[0]) > 1:
         q_rel[0] = 1
     angle = 2 * np.arccos(q_rel[0])

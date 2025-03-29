@@ -1,9 +1,8 @@
 epoch: 5
-obj_batch_size: 10
-hand_batch_size: 64
 device: "cuda:0"
 
 object:
+  batch_size: 10
   root_folder: ${asset_root}/object/DGN_obj/processed_data
   selection:
     id_lst_path:  ${asset_root}/object/DGN_obj/valid_split/all.json

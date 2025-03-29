@@ -3,7 +3,7 @@ asset_root: assets
 save_root: output
 save_dir: ${save_root}/${exp_name}_${hand_name}
 skip: True
-n_worker: 16    # used for MJTest and MJOpt
+n_worker: 16    
 gpu_list: [4,5,6,7]  # only used for CSample
 
 debug: False
@@ -18,6 +18,7 @@ has_floor_z0: False
 override_ogd: True
 update_template: "nearest"   # Choices: False, "body", "nearest", "arbi"
 max_template_evolution: 2
+max_template_buffer: 1024
 
 # Path for hand annotation
 raw_anno_dir: ${asset_root}/hand/${hand_name}/raw_anno

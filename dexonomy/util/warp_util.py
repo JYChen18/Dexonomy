@@ -78,7 +78,7 @@ def get_closest_point(
         cl_pt = wp.mesh_eval_position(
             mesh_idx[bid], collide_result.face, collide_result.u, collide_result.v
         )
-        # Use attribute named velocity to save vertex normal
+        # Use the 'velocity' attribute to save vertex normal
         vn1 = wp.mesh_get_velocity(mesh_idx[bid], collide_result.face * 3 + 0)
         vn2 = wp.mesh_get_velocity(mesh_idx[bid], collide_result.face * 3 + 1)
         vn3 = wp.mesh_get_velocity(mesh_idx[bid], collide_result.face * 3 + 2)

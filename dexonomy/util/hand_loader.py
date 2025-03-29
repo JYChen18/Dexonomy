@@ -13,6 +13,7 @@ import numpy as np
 from transforms3d import quaternions as tq
 
 from dexonomy.util.np_rot_util import (
+    np_array32,
     np_normal_to_rot,
     np_transform_points,
     np_inv_transform_points,
@@ -49,6 +50,8 @@ class HandTemplateLibrary:
             "nf_hf_rot": [],
             "nf_hf_trans": [],
             "nf_hc": [],
+            "hf_hsk": [],
+            "hf_ogd": [],
             "evolution_num": [],
         }
 
@@ -76,7 +79,7 @@ class HandTemplateLibrary:
         for k, v in hand_skeleton_dict.items():
             self.hand_skeleton.extend(v)
             self.hand_sk_body_id.extend([kinematic.body_id_dict[k]] * len(v))
-        self.hand_skeleton = np.array(self.hand_skeleton)
+        self.hand_skeleton = np_array32(self.hand_skeleton)
         self.hand_sk_body_id = np.array(self.hand_sk_body_id)
 
         # Pre-read the initial template
@@ -94,6 +97,8 @@ class HandTemplateLibrary:
             "hand_contact_body_names": hand_data["hand_contact_body_names"],
             "necessary_contact_body_names": hand_data["necessary_contact_body_names"],
         }
+        self.start()
+        return
 
     def start(self):
         """Start all threads in the pipeline"""
@@ -205,7 +210,7 @@ class HandTemplateLibrary:
             ],
             axis=-1,
         )
-        hr = tq.quat2mat(hand_data["grasp_pose"][3:])
+        hr = tq.quat2mat(hand_data["grasp_pose"][3:]).astype(np.float32)
         ht = hand_data["grasp_pose"][:3]
         hf_hc = np_inv_transform_points(hand_data["hand_worldframe_contacts"], hr, ht)
         init_idx = np.random.randint(low=0, high=len(hf_hc))
@@ -220,7 +225,7 @@ class HandTemplateLibrary:
         hand_data["hand_path"] = data_path
         return hand_data
 
-    def get_batched_data(self, data_size: tuple):
+    def get_batched_data(self, data_size: torch.Size, device: torch.device):
         """Get processed data from buffer (thread-safe)"""
         with self.buffer_lock:
             buffer_length = len(self.data_buffer["hand_path"])
@@ -229,7 +234,7 @@ class HandTemplateLibrary:
             logging.info(f"(Hand Loader) Current buffer: {buffer_length}")
             for k, v in self.data_buffer.items():
                 if isinstance(v[0], torch.Tensor):
-                    new_data[k] = torch.stack(v)[rand_id]
+                    new_data[k] = torch.stack(v)[rand_id].to(device)
             for k, v in self.extra_info.items():
                 new_data[k] = v
             return new_data
@@ -247,11 +252,10 @@ def test_hand_library(configs):
         num_workers=configs.n_worker,
     )
     try:
-        hand_library.start()
         for _ in range(20):
             for i in range(3):
                 time.sleep(0.1)
-                d = hand_library.get_batched_data((10, 8192))
+                d = hand_library.get_batched_data((10, 8192), "cpu")
                 logging.info(f"Batched data shape: {d['grasp_qpos'].shape}")
             time.sleep(0.8)
     finally:

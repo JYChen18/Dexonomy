@@ -8,7 +8,7 @@ import numpy as np
 
 from dexonomy.util.file_util import load_yaml, write_yaml
 from dexonomy.util.mujoco_util import RobotKinematics
-from dexonomy.util.np_rot_util import np_transform_points
+from dexonomy.util.np_rot_util import np_transform_points, np_array32
 
 
 def _single_anno2temp(params):
@@ -19,9 +19,8 @@ def _single_anno2temp(params):
         params[3],
     )
     anno_data = load_yaml(anno_path)
-    qpos_lst = np.array(
-        anno_data["qpos"].replace("<key qpos='", "").replace("'/>", "").split(" "),
-        dtype=np.float32,
+    qpos_lst = np_array32(
+        anno_data["qpos"].replace("<key qpos='", "").replace("'/>", "").split(" ")
     )
     kin = RobotKinematics(xml_path=configs.hand.xml_path)
     xmat, xpos = kin.forward_kinematics(qpos_lst)
@@ -30,7 +29,7 @@ def _single_anno2temp(params):
     for body_name, contact_anno in anno_data["contact"].items():
         if isinstance(contact_anno, List):
             assert len(contact_anno) == 6
-            hand_worldframe_contact.append(np.array(contact_anno))
+            hand_worldframe_contact.append(np_array32(contact_anno))
         else:
             hbc = hand_keypoint[body_name][contact_anno]
             body_id = kin.body_id_dict[body_name]
@@ -56,22 +55,22 @@ def _single_anno2temp(params):
                 check_lst.append(j)
 
     if "obj_gravity_direction" not in anno_data:
-        obj_gravity_direction = np.array([0.0, 0, 1, 0, 0, 0])
+        obj_gravity_direction = np_array32([0.0, 0, 1, 0, 0, 0])
     else:
-        obj_gravity_direction = anno_data["obj_gravity_direction"]
+        obj_gravity_direction = np_array32(anno_data["obj_gravity_direction"])
         assert len(obj_gravity_direction) == 6 and np.testing.assert_allclose(
             np.linalg.norm(obj_gravity_direction), 1
         )
 
     temp_data = {
         "hand_template_name": os.path.basename(anno_path).removesuffix(".yaml"),
-        "grasp_pose": np.array([0.0, 0, 0, 1, 0, 0, 0], dtype=np.float32),
+        "grasp_pose": np_array32([0.0, 0, 0, 1, 0, 0, 0]),
         "grasp_qpos": qpos_lst,
         "hand_worldframe_contacts": np.stack(hand_worldframe_contact, axis=0),
         "hand_contact_body_names": list(anno_data["contact"].keys()),
         "necessary_contact_body_names": necessary_contact_body_names,
         "obj_gravity_direction": obj_gravity_direction,
-        "evolution_num": np.array([0.0]),
+        "evolution_num": np_array32([0.0]),
     }
     temp_path = anno_path.replace(
         configs.raw_anno_dir, configs.init_template_dir

@@ -2,6 +2,7 @@ import os
 import random
 
 import numpy as np
+import torch
 from torch.utils.data import Dataset, DataLoader
 from torch.utils.data._utils.collate import default_collate
 import trimesh
@@ -105,7 +106,7 @@ def _customized_collate_fn(list_data):
     return ret_data
 
 
-def get_object_dataloader(configs, batch_size, n_worker):
+def get_object_dataloader(configs, n_worker):
     dataset = ObjSampleDataset(
         root_folder=configs.root_folder,
         init_point_num=configs.init_point_num,
@@ -114,9 +115,10 @@ def get_object_dataloader(configs, batch_size, n_worker):
     )
     dataloader = DataLoader(
         dataset,
-        batch_size=batch_size,
+        batch_size=configs.batch_size,
         num_workers=n_worker,
         shuffle=False,
         collate_fn=_customized_collate_fn,
+        pin_memory=True,
     )
     return dataloader

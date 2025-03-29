@@ -10,7 +10,7 @@ import mujoco
 import mujoco.viewer
 import transforms3d.quaternions as tq
 
-from .np_rot_util import np_interplote_pose, np_interplote_qpos
+from dexonomy.util.np_rot_util import np_interplote_pose, np_interplote_qpos, np_array32
 
 
 class MjHO:
@@ -382,10 +382,10 @@ class RobotKinematics:
         """
         self.mj_data.qpos = qpos
         mujoco.mj_kinematics(self.mj_model, self.mj_data)
-        xmat = deepcopy(self.mj_data.xmat).reshape(-1, 3, 3)
-        xpos = deepcopy(self.mj_data.xpos)
+        xmat = np_array32(self.mj_data.xmat).reshape(-1, 3, 3)
+        xpos = np_array32(self.mj_data.xpos)
         if pose is not None:
-            root_r, root_t = tq.quat2mat(pose[3:]), np.array(pose[:3])
+            root_r, root_t = tq.quat2mat(pose[3:]), np_array32(pose[:3])
             xmat = root_r[None] @ xmat
             xpos = xpos @ root_r.T + root_t[None]
         return xmat, xpos
