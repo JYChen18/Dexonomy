@@ -88,10 +88,10 @@ def get_diversity(data_lst):
 
 def task_stat(configs):
 
-    hand_loader = HandTemplateLoader(**configs.hand)
-    tmp_lst = hand_loader.template_names
-    tmp_lst.append("**")
-    tmp_lst = ["**"]
+    if configs.task.separate_template:
+        tmp_lst = os.listdir(configs.init_dir)
+    else:
+        tmp_lst = [configs.template_name]
 
     # Hand template summary
     for template_name in tmp_lst:

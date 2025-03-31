@@ -1,3 +1,4 @@
+separate_template: True
 scale_fig: False
 diversity: False
 contact_number: False

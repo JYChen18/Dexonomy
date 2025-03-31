@@ -1,6 +1,6 @@
 import os
 import pdb
-from typing import List
+from typing import List, Dict
 
 os.environ["MUJOCO_GL"] = "osmesa"
 
@@ -37,13 +37,8 @@ class MuJoCo_BaseEnv:
         hand_xml_path: str,
         hand_add_mocap: bool,
         hand_exclude_table_contact: List[str],
-        friction_coef: tuple[float, float],
-        plane_pose_lst: List[List[float]] = None,
-        plane_size_lst: List[List[float]] = None,
-        rigid_obj_path_lst: List[str] = None,
-        rigid_obj_pose_lst: List[List[float]] = None,
-        rigid_obj_scale_lst: List[float] = None,
-        rigid_obj_density_lst: List[float] = None,
+        friction_coef: tuple[float, float] = None,
+        obj_cfg_lst: List[Dict] = None,
         rigid_obj_interest_id: int = 0,
         debug_render: bool = False,
         debug_viewer: bool = False,
@@ -59,21 +54,19 @@ class MuJoCo_BaseEnv:
         if debug_render or debug_viewer:
             self._add_for_render()
 
-        if plane_pose_lst is not None:
-            for plpose, plsize in zip(plane_pose_lst, plane_size_lst):
-                self._add_plane(plpose, plsize)
-
         self._add_hand(hand_xml_path, hand_add_mocap, hand_exclude_table_contact)
-        if rigid_obj_path_lst is not None:
-            self.rigid_obj_interest_id = rigid_obj_interest_id
-            for ropath, ropose, roscale, rodensity in zip(
-                rigid_obj_path_lst,
-                rigid_obj_pose_lst,
-                rigid_obj_scale_lst,
-                rigid_obj_density_lst,
-            ):
-                self._add_rigid_object(ropath, ropose, roscale, rodensity)
-            self.rigid_obj_init_pose = np.array(rigid_obj_pose_lst).reshape(-1)
+
+        self.rigid_obj_init_pose = []
+        self.rigid_obj_interest_id = rigid_obj_interest_id
+        for obj_cfg in obj_cfg_lst:
+            obj_type = obj_cfg.pop("type")
+            if obj_type == "plane":
+                self._add_plane(**obj_cfg)
+            elif obj_type == "rigid":
+                self._add_rigid_object(**obj_cfg)
+            else:
+                raise NotImplementedError
+        self.rigid_obj_init_pose = np_array32(self.rigid_obj_init_pose).reshape(-1)
 
         self._set_friction(friction_coef)
         self.spec.add_key()
@@ -94,7 +87,9 @@ class MuJoCo_BaseEnv:
             self.data.moment_rowadr,
             self.data.moment_colind,
         )
-        self._qpos2ctrl_matrix = qpos2ctrl_matrix[..., : -6 * self.rigid_obj_num]
+        self.hand_nv = self.model.nv - 6 * self.rigid_obj_num * self.obj_freejoint
+        self._qpos2ctrl_matrix = qpos2ctrl_matrix[..., : self.hand_nv]
+        self.hand_nq = self.model.nq - 7 * self.rigid_obj_num * self.obj_freejoint
 
         self.debug_viewer = None
         self.debug_render = None
@@ -155,22 +150,24 @@ class MuJoCo_BaseEnv:
                 )
         return
 
-    def _add_rigid_object(self, obj_mesh_dir, obj_pose, obj_scale, obj_density=1000):
+    def _add_rigid_object(self, mesh_dir, pose, scale, density=1000):
         obj_body = self.spec.worldbody.add_body(
             name=f"rigid_object_{self.rigid_obj_num}",
-            pos=obj_pose[:3],
-            quat=obj_pose[3:],
+            pos=pose[:3],
+            quat=pose[3:],
         )
         if self.obj_freejoint:
             obj_body.add_freejoint(name=f"rigid_object_freejoint_{self.rigid_obj_num}")
-        for file in os.listdir(obj_mesh_dir):
-            mesh_name = file.replace(".obj", "")
-            cvpart_id = mesh_name.replace("convex_piece_", "")
+
+        for file in os.listdir(mesh_dir):
+            file_name = file.replace(".obj", "")
+            cvpart_id = file_name.replace("convex_piece_", "")
+            mesh_name = f"rigid_{self.rigid_obj_num}_{file_name}"
 
             self.spec.add_mesh(
-                name=f"rigid_{self.rigid_obj_num}_{mesh_name}",
-                file=os.path.join(obj_mesh_dir, file),
-                scale=[obj_scale, obj_scale, obj_scale],
+                name=mesh_name,
+                file=os.path.join(mesh_dir, file),
+                scale=[scale, scale, scale],
             )
             obj_body.add_geom(
                 name=f"rigid_object_visual_{self.rigid_obj_num}_{cvpart_id}",
@@ -184,18 +181,19 @@ class MuJoCo_BaseEnv:
                 name=f"rigid_object_collision_{self.rigid_obj_num}_{cvpart_id}",
                 type=mujoco.mjtGeom.mjGEOM_MESH,
                 meshname=mesh_name,
-                density=obj_density,
+                density=density,
                 margin=self.obj_margin,
             )
         self.rigid_obj_num += 1
+        self.rigid_obj_init_pose.append(pose)
         return
 
-    def _add_plane(self, plane_pose, plane_size):
+    def _add_plane(self, pose=[0.0, 0, 0], size=[0, 0, 1.0]):
         plane_geom = self.spec.worldbody.add_geom(
             name=f"plane_collision_{self.plane_num}",
             type=mujoco.mjtGeom.mjGEOM_PLANE,
-            pos=plane_pose,
-            size=plane_size,
+            pos=pose,
+            size=size,
             margin=self.plane_margin,
         )
         self.plane_num += 1
@@ -229,6 +227,7 @@ class MuJoCo_BaseEnv:
             return self._qpos2ctrl_matrix @ hand_qpos
 
     def get_interest_rigid_object_pose(self):
+        raise NotImplementedError
         return self.data.qpos[
             -7
             * self.obj_freejoint
@@ -236,7 +235,7 @@ class MuJoCo_BaseEnv:
         ]
 
     def get_hand_qpos(self):
-        return self.data.qpos[: -7 * self.rigid_obj_num * self.obj_freejoint]
+        return self.data.qpos[: self.hand_nq]
 
     def get_contact_info(self, obj_margin=None):
         if obj_margin is not None:
@@ -271,8 +270,7 @@ class MuJoCo_BaseEnv:
                 ho_contact.append(
                     {
                         "contact_dist": contact.dist,
-                        "contact_pos": contact.pos
-                        - contact.dist * contact_normal,  # TOCHECK
+                        "contact_pos": contact.pos - contact.dist * contact_normal,
                         "contact_normal": contact_normal,
                         "body1_name": hand_body_name,
                         "body2_name": obj_body_name,
@@ -439,12 +437,16 @@ class MuJoCo_OptEnv(MuJoCo_BaseEnv):
                 self.model.body(self.hand_prefix + hbn).id,
                 self.data.qfrc_applied,
             )
-        print(self.data.qfrc_applied.shape, self._qpos2ctrl_matrix.shape)
-        target_qforce = self.data.qfrc_applied @ self._qpos2ctrl_matrix
-        print(self.data.qfrc_applied, target_qforce, self._qpos2ctrl_matrix)
-        squeeze_qpos = np.concatenate(
-            [grasp_qpos[:7], grasp_qpos[7:] + target_qforce[6:]]
-        )
+        delta_qpos = np.copy(self.data.qfrc_applied)
+        actuator_gainprm = self.model.actuator_gainprm[:, 0]
+        for i in range(len(delta_qpos)):
+            actuator_id = np.where(self._qpos2ctrl_matrix[:, i] != 0)[0]
+            if len(actuator_id) > 0:
+                delta_qpos[i] /= (
+                    actuator_gainprm[actuator_id[0]]
+                    * self._qpos2ctrl_matrix[actuator_id[0]].sum()
+                )
+        squeeze_qpos = np.concatenate([grasp_qpos[:7], grasp_qpos[7:] + delta_qpos[6:]])
         return squeeze_qpos
 
 
