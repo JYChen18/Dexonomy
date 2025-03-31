@@ -2,7 +2,7 @@ grasp:
   outer_iter: 20
   inner_iter: 10
   ho_target_dist: 0.001
-  ho_margin: 0.002
+  contact_threshold: 0.002
   coll_filter: 
     hh_threshold: 0.0
     ho_threshold: 0.0
@@ -16,7 +16,6 @@ pregrasp:
   outer_iter: 20
   inner_iter: 10
   ho_target_dist: 0.025
-  ho_margin: 0.025
   coll_filter: 
     hh_threshold: 0.0
     ho_threshold: 0.02

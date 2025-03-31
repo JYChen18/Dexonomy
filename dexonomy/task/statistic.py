@@ -6,8 +6,10 @@ import logging
 import matplotlib.pyplot as plt
 import torch
 
-from util.hand_loader import HandTemplateLoader
-from util.rot_utils import torch_quaternion_to_matrix, torch_matrix_to_axis_angle
+from dexonomy.util.torch_rot_util import (
+    torch_quaternion_to_matrix,
+    torch_matrix_to_axis_angle,
+)
 
 
 def draw_obj_scale_fig(data_lst, save_path):

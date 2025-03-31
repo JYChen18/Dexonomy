@@ -10,7 +10,7 @@ import numpy as np
 from transforms3d import quaternions as tq
 
 from util.hand_fk import RobotKinematics
-from util.hand_loader import HandTemplateLoader
+from dexonomy.data.hand_loader import HandTemplateLoader
 from util.usd_helper import UsdHelper, Material
 
 

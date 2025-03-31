@@ -1,7 +1,6 @@
 import torch
 
-from .torch_rot_util import torch_normal_to_rot
-
+from dexonomy.util.torch_rot_util import torch_normal_to_rot
 
 
 def build_constraint_batched(batch, num_points, device):
@@ -346,8 +345,6 @@ class _RELUQP:
                     break
 
         return x
-
-
 
 
 if __name__ == "__main__":

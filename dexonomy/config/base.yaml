@@ -7,7 +7,7 @@ n_worker: 16
 gpu_list: [4,5,6,7]  # only used for CSample
 
 debug: False
-debug_view: False
+debug_viewer: False
 debug_render: False
 template_name: "**"
 obj_name: "**"

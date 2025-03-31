@@ -6,7 +6,7 @@ import logging
 from copy import deepcopy
 import multiprocessing
 
-from dexonomy.util.mujoco_util import RobotKinematics
+from dexonomy.sim import MuJoCo_RobotFK
 from dexonomy.util.file_util import load_yaml
 from dexonomy.util.vis_util import get_arrow_mesh
 
@@ -85,7 +85,7 @@ def _single_visd(params):
 
 def _vis_template(configs):
     task_config = configs.task
-    kin = RobotKinematics(configs.hand.xml_path)
+    kin = MuJoCo_RobotFK(configs.hand.xml_path)
 
     template_paths = glob(
         os.path.join(configs.init_template_dir, configs.template_name)

@@ -18,7 +18,7 @@ from dexonomy.util.np_rot_util import (
     np_transform_points,
     np_inv_transform_points,
 )
-from dexonomy.util.mujoco_util import RobotKinematics
+from dexonomy.sim import MuJoCo_RobotFK
 from dexonomy.util.file_util import load_yaml
 
 
@@ -45,7 +45,6 @@ class HandTemplateLibrary:
         # Buffer components
         self.data_buffer = {
             "hand_path": [],
-            "grasp_pose": [],
             "grasp_qpos": [],
             "nf_hf_rot": [],
             "nf_hf_trans": [],
@@ -73,7 +72,7 @@ class HandTemplateLibrary:
 
         # Read and pre-process skeleton informations
         hand_skeleton_dict = load_yaml(skeleton_path)
-        kinematic = RobotKinematics(xml_path=xml_path, vis_mesh_mode=None)
+        kinematic = MuJoCo_RobotFK(xml_path=xml_path, vis_mesh_mode=None)
         self.hand_skeleton = []
         self.hand_sk_body_id = []
         for k, v in hand_skeleton_dict.items():
@@ -165,7 +164,7 @@ class HandTemplateLibrary:
 
     def _update_data_buffer(self):
         """Consumer thread that load data and stores results in buffer"""
-        kinematic = RobotKinematics(self.xml_path, vis_mesh_mode=None)
+        kinematic = MuJoCo_RobotFK(self.xml_path, vis_mesh_mode=None)
         while self.running:
             data_path = None
 
@@ -198,9 +197,9 @@ class HandTemplateLibrary:
                     error_traceback = traceback.format_exc()
                     logging.error(f"(Hand Loader) {error_traceback}")
 
-    def _load_data(self, kinematic: RobotKinematics, data_path: str):
+    def _load_data(self, kinematic: MuJoCo_RobotFK, data_path: str):
         hand_data = np.load(data_path, allow_pickle=True).item()
-        xmat, xpos = kinematic.forward_kinematics(hand_data["grasp_qpos"])
+        xmat, xpos = kinematic.forward_kinematics(hand_data["grasp_qpos"][7:])
         body_xmat = xmat[self.hand_sk_body_id]
         body_xpos = xpos[self.hand_sk_body_id]
         hand_data["hf_hsk"] = np.concatenate(
@@ -210,8 +209,8 @@ class HandTemplateLibrary:
             ],
             axis=-1,
         )
-        hr = tq.quat2mat(hand_data["grasp_pose"][3:]).astype(np.float32)
-        ht = hand_data["grasp_pose"][:3]
+        hr = tq.quat2mat(hand_data["grasp_qpos"][3:7]).astype(np.float32)
+        ht = hand_data["grasp_qpos"][:3]
         hf_hc = np_inv_transform_points(hand_data["hand_worldframe_contacts"], hr, ht)
         init_idx = np.random.randint(low=0, high=len(hf_hc))
         nf_hf_rot = np_normal_to_rot(hf_hc[init_idx, 3:].reshape(1, 3)).squeeze(0).T

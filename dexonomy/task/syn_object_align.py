@@ -6,8 +6,8 @@ import os
 import warp as wp
 import logging
 
-from util.warp_util import MeshQueryPoint, MeshLineSegCollision
-from util.torch_rot_util import (
+from dexonomy.util.warp_util import MeshQueryPoint, MeshLineSegCollision
+from dexonomy.util.torch_rot_util import (
     torch_normal_to_rot,
     torch_transform_points,
     torch_axis_angle_rotation,
@@ -17,10 +17,10 @@ from util.torch_rot_util import (
     torch_pose_multiply,
     torch_inv_transform_points,
 )
-from util.obj_loader import get_object_dataloader
-from util.hand_loader import HandTemplateLibrary
-from util.qp_batched import get_qp_error_batched
-from util.qp_single import ContactQP
+from dexonomy.data.obj_loader import get_object_dataloader
+from dexonomy.data.hand_loader import HandTemplateLibrary
+from dexonomy.qp.qp_batched import get_qp_error_batched
+from dexonomy.qp.qp_single import ContactQP
 
 
 def sample_init_poses(
@@ -50,7 +50,7 @@ def sample_init_poses(
     return sampled_rot, sampled_trans, sampled_scale
 
 
-class OptMatcher:
+class ObjectAligner:
 
     def __init__(
         self, device, opt_iter, loss_filter, coll_filter, qp_filter, fps_filter
@@ -287,9 +287,9 @@ class OptMatcher:
             )
             for k, v in result_dict.items():
                 result_dict[k] = v[fps_valid_idx]
-            # logging.warning(
-            #     f"FPS filtering remain {fps_valid_idx.sum()} out of {remain_number}"
-            # )
+            logging.debug(
+                f"FPS filtering remain {fps_valid_idx.sum()} out of {remain_number}"
+            )
 
         for k, v in result_dict.items():
             result_dict[k] = v.detach().cpu().numpy()
@@ -437,7 +437,7 @@ def task_syn_obj(configs):
         max_data_buffer=configs.max_template_buffer,
         num_workers=configs.n_worker,
     )
-    matcher = OptMatcher(task_config.device, **task_config.matcher)
+    matcher = ObjectAligner(task_config.device, **task_config.matcher)
 
     for eee in range(task_config.epoch):
         logging.warning(f"Epoch {eee}")
@@ -472,7 +472,7 @@ def task_syn_obj(configs):
                 hand_temp_dict["hf_ogd"],
                 hand_temp_dict["nf_hf_rot"],
                 hand_temp_dict["nf_hf_trans"],
-                hand_temp_dict["grasp_qpos"],
+                hand_temp_dict["grasp_qpos"][..., 7:],
                 hand_temp_dict["evolution_num"],
                 sampled_rot,
                 sampled_trans,
@@ -532,8 +532,7 @@ def task_syn_obj(configs):
                         "evolution_num": hand_evolution_num,
                         "hand_type": configs.hand_name,
                         "hand_template_name": hand_temp_dict["hand_template_name"],
-                        "grasp_pose": grasp_pose,
-                        "grasp_qpos": grasp_qpos,
+                        "grasp_qpos": np.concatenate([grasp_pose, grasp_qpos]),
                         "hand_worldframe_contacts": hand_c,
                         "hand_contact_body_names": hand_temp_dict[
                             "hand_contact_body_names"

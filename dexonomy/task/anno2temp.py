@@ -7,7 +7,7 @@ import multiprocessing
 import numpy as np
 
 from dexonomy.util.file_util import load_yaml, write_yaml
-from dexonomy.util.mujoco_util import RobotKinematics
+from dexonomy.sim import MuJoCo_RobotFK
 from dexonomy.util.np_rot_util import np_transform_points, np_array32
 
 
@@ -22,7 +22,7 @@ def _single_anno2temp(params):
     qpos_lst = np_array32(
         anno_data["qpos"].replace("<key qpos='", "").replace("'/>", "").split(" ")
     )
-    kin = RobotKinematics(xml_path=configs.hand.xml_path)
+    kin = MuJoCo_RobotFK(xml_path=configs.hand.xml_path)
     xmat, xpos = kin.forward_kinematics(qpos_lst)
 
     hand_worldframe_contact = []
@@ -64,8 +64,7 @@ def _single_anno2temp(params):
 
     temp_data = {
         "hand_template_name": os.path.basename(anno_path).removesuffix(".yaml"),
-        "grasp_pose": np_array32([0.0, 0, 0, 1, 0, 0, 0]),
-        "grasp_qpos": qpos_lst,
+        "grasp_qpos": np.concatenate([np_array32([0.0, 0, 0, 1, 0, 0, 0]), qpos_lst]),
         "hand_worldframe_contacts": np.stack(hand_worldframe_contact, axis=0),
         "hand_contact_body_names": list(anno_data["contact"].keys()),
         "necessary_contact_body_names": necessary_contact_body_names,
