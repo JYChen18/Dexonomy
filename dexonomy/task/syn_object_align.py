@@ -7,6 +7,7 @@ import warp as wp
 import logging
 
 from dexonomy.util.warp_util import MeshQueryPoint, MeshLineSegCollision
+from dexonomy.util.np_rot_util import np_array32
 from dexonomy.util.torch_rot_util import (
     torch_normal_to_rot,
     torch_transform_points,
@@ -270,9 +271,9 @@ class ObjectAligner:
             )
             for k, v in result_dict.items():
                 result_dict[k] = v[qp_valid_idx]
-            # logging.warning(
-            #     f"QP filtering remain {qp_valid_idx.sum()} out of {remain_number}"
-            # )
+            logging.debug(
+                f"QP filtering remain {qp_valid_idx.sum()} out of {remain_number}"
+            )
             remain_number = qp_valid_idx.sum()
             if remain_number == 0:
                 return result_dict
@@ -529,7 +530,7 @@ def task_syn_obj(configs):
                 np.save(
                     f"{grasp_dir}/{eee}_{count}.npy",
                     {
-                        "evolution_num": hand_evolution_num,
+                        "evolution_num": np_array32([hand_evolution_num]),
                         "hand_type": configs.hand_name,
                         "hand_template_name": hand_temp_dict["hand_template_name"],
                         "grasp_qpos": np.concatenate([grasp_pose, grasp_qpos]),

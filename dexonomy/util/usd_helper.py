@@ -16,7 +16,7 @@ except ImportError:
         + " NOTE: Do not install this if using with ISAAC SIM."
     )
 
-from .torch_rot_util import even_sample_points_on_sphere
+from dexonomy.util.np_rot_util import np_even_sample_points_on_sphere
 
 
 def create_view_matrix(position, target):
@@ -94,7 +94,7 @@ class UsdHelper:
 
         # camera_radius = 150
         # camera_lookat = np.array([100.0, 100, 100])
-        # camera_pos = camera_lookat + camera_radius * even_sample_points_on_sphere(
+        # camera_pos = camera_lookat + camera_radius * np_even_sample_points_on_sphere(
         #     3, delta_angle=45
         # )
         # for i in range(len(camera_pos)):

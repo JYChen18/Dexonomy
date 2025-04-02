@@ -263,7 +263,6 @@ class MuJoCo_BaseEnv:
             if (
                 body1_id > world_id and body1_id < hand_id and body2_id >= object_id
             ) or (body2_id > world_id and body2_id < hand_id and body1_id >= object_id):
-                # keep body1=hand and body2=object
                 if body2_id >= object_id:
                     contact_normal = contact.frame[0:3]
                     hand_body_name = body1_name.removeprefix(self.hand_prefix)
@@ -275,8 +274,9 @@ class MuJoCo_BaseEnv:
                 ho_contact.append(
                     {
                         "contact_dist": contact.dist,
-                        "contact_pos": contact.pos - contact.dist * contact_normal,
-                        "contact_normal": contact_normal,
+                        "contact_pos": contact.pos
+                        - contact.dist * contact_normal,  # point on hand
+                        "contact_normal": contact_normal,  # from body1 to body2
                         "body1_name": hand_body_name,
                         "body2_name": obj_body_name,
                     }
@@ -495,7 +495,7 @@ class MuJoCo_TestEnv(MuJoCo_BaseEnv):
         self, grasp_qpos, squeeze_qpos, extforce, trans_thre, angle_thre
     ):
         self.reset_qpos(grasp_qpos)
-        pre_obj_pose = self.get_interest_rigid_object_pose()
+        pre_obj_pose = np.copy(self.get_interest_rigid_object_pose())
         self.control_hand_with_interp(grasp_qpos, squeeze_qpos)
         self.set_rigid_object_extforce(extforce)
         for _ in range(10):
@@ -505,7 +505,7 @@ class MuJoCo_TestEnv(MuJoCo_BaseEnv):
             succ_flag = (delta_pos < trans_thre) & (delta_angle < angle_thre)
             if not succ_flag:
                 break
-        return
+        return succ_flag
 
     def test_arm(self):
         raise NotImplementedError

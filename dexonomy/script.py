@@ -21,30 +21,29 @@ def check_stop(test_log_path):
     return False
 
 
-def run_csample(
-    general_config_str, csample_config_str, template_name, device_id, log_id
+def run_syn_obj(
+    general_config_str, syn_obj_config_str, template_name, device_id, log_id
 ):
-    csample_cmd = f"CUDA_VISIBLE_DEVICES={device_id} python main.py task=csample debug_template={template_name} log_id={log_id} {general_config_str} {csample_config_str}"
-    logging.warning(csample_cmd)
-    os.system(csample_cmd)
+    syn_obj_cmd = f"CUDA_VISIBLE_DEVICES={device_id} python -m dexonomy.main task=syn_obj template_name={template_name} log_id={log_id} {general_config_str} {syn_obj_config_str}"
+    logging.warning(syn_obj_cmd)
+    os.system(syn_obj_cmd)
     return
 
 
-def run_mjopt(general_config_str, mjopt_config_str, test_log_path):
-    mjopt_cmd = f"python main.py task=mjopt {general_config_str} {mjopt_config_str}"
-    logging.warning(mjopt_cmd)
-    time.sleep(10)
+def run_syn_hand(general_config_str, syn_hand_config_str, test_log_path):
+    syn_hand_cmd = f"python -m dexonomy.main task=syn_hand {general_config_str} {syn_hand_config_str}"
+    logging.warning(syn_hand_cmd)
     while not check_stop(test_log_path):
-        os.system(mjopt_cmd)
+        os.system(syn_hand_cmd)
     return
 
 
-def run_mjtest(general_config_str, mjtest_config_str, test_log_path):
-    mjtest_cmd = f"python main.py task=mjtest {general_config_str} {mjtest_config_str}"
-    logging.warning(mjtest_cmd)
-    time.sleep(30)
+def run_syn_test(general_config_str, syn_test_config_str, test_log_path):
+    syn_test_cmd = f"python -m dexonomy.main task=syn_test {general_config_str} {syn_test_config_str}"
+    logging.warning(syn_test_cmd)
+    time.sleep(5)
     while not check_stop(test_log_path):
-        os.system(mjtest_cmd)
+        os.system(syn_test_cmd)
     return
 
 
@@ -57,19 +56,19 @@ def run_together(configs):
 
     override_config = {
         "general": [],
-        "csample": [],
-        "mjopt": [],
-        "mjtest": [],
+        "syn_obj": [],
+        "syn_hand": [],
+        "syn_test": [],
     }
     for argv in sys.argv[1:]:
-        if "+csample." in argv:
-            override_config["csample"].append(argv.replace("+csample.", "task."))
-        elif "+mjopt." in argv:
-            override_config["mjopt"].append(argv.replace("+mjopt.", "task."))
-        elif "+mjtest." in argv:
-            override_config["mjtest"].append(argv.replace("+mjtest.", "task."))
+        if "+syn_obj." in argv:
+            override_config["syn_obj"].append(argv.replace("+syn_obj.", "task."))
+        elif "+syn_hand." in argv:
+            override_config["syn_hand"].append(argv.replace("+syn_hand.", "task."))
+        elif "+syn_test." in argv:
+            override_config["syn_test"].append(argv.replace("+syn_test.", "task."))
         else:
-            if "debug_template=" in argv or "log_id=" in argv:
+            if "template_name=" in argv or "log_id=" in argv:
                 continue
             override_config["general"].append(argv)
 
@@ -80,47 +79,47 @@ def run_together(configs):
             override_config[k] = "'" + "' '".join(v) + "'"
 
     # read hand template names
-    if configs.debug_template == "**" or configs.debug_template is None:
+    if configs.template_name == "**" or configs.template_name is None:
         hand_template_names = [
-            f.split(".yaml")[0] for f in os.listdir(configs.hand.template_path)
+            f.split(".npy")[0] for f in os.listdir(configs.init_template_dir)
         ]
-    elif isinstance(configs.debug_template, omegaconf.listconfig.ListConfig):
-        hand_template_names = list(configs.debug_template)
-    elif isinstance(configs.debug_template, str):
-        hand_template_names = [configs.debug_template]
+    elif isinstance(configs.template_name, omegaconf.listconfig.ListConfig):
+        hand_template_names = list(configs.template_name)
+    elif isinstance(configs.template_name, str):
+        hand_template_names = [configs.template_name]
     else:
-        raise NotImplementedError(f"Undefined debug_template: {configs.debug_template}")
+        raise NotImplementedError(f"Undefined template_name: {configs.template_name}")
 
     assert len(hand_template_names) <= len(
         configs.gpu_list
     ), f"Template number: {len(hand_template_names)}; GPU number: {len(configs.gpu_list)}"
 
     test_log_path = os.path.join(
-        configs.log_dir.replace(configs.task_name, "mjtest"), "main.log"
+        configs.log_dir.replace(configs.task_name, "syn_test"), "main.log"
     )
 
     # Use ProcessPoolExecutor to run functions in parallel
     with ProcessPoolExecutor() as executor:
         futures = [
             executor.submit(
-                run_mjopt,
+                run_syn_hand,
                 override_config["general"],
-                override_config["mjopt"],
+                override_config["syn_hand"],
                 test_log_path,
             ),
             executor.submit(
-                run_mjtest,
+                run_syn_test,
                 override_config["general"],
-                override_config["mjtest"],
+                override_config["syn_test"],
                 test_log_path,
             ),
         ]
         for i, template_name in enumerate(hand_template_names):
             futures.append(
                 executor.submit(
-                    run_csample,
+                    run_syn_obj,
                     override_config["general"],
-                    override_config["csample"],
+                    override_config["syn_obj"],
                     template_name,
                     configs.gpu_list[i],
                     i,

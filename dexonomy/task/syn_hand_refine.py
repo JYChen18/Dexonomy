@@ -128,7 +128,7 @@ def _single_hand_refine(params):
             continue
         break
 
-    new_grasp_qpos = np.copy(sim_env.get_hand_qpos())
+    new_grasp_qpos = np_array32(sim_env.get_hand_qpos())
     if configs.override_ogd:
         grasp_data["obj_gravity_direction"] = np_array32([0.0, 0, -1, 0, 0, 0])
     else:
@@ -172,11 +172,13 @@ def _single_hand_refine(params):
     if contact_wrench is None:
         return input_npy_path
 
-    grasp_data["squeeze_qpos"] = sim_env.get_squeeze_qpos(
-        new_grasp_qpos,
-        hand_body,
-        hand_point,
-        10 * contact_wrench,
+    grasp_data["squeeze_qpos"] = np_array32(
+        sim_env.get_squeeze_qpos(
+            new_grasp_qpos,
+            hand_body,
+            hand_point,
+            10 * contact_wrench,
+        )
     )
 
     if configs.update_template == "body":
@@ -231,6 +233,8 @@ def _single_hand_refine(params):
             skip_logging=False,
         ):
             return input_npy_path
+
+        grasp_data["pregrasp_qpos"] = np_array32(sim_env.get_hand_qpos())
 
     sim_env.debug_postprocess(
         save_path=input_npy_path.replace(configs.init_dir, configs.debug_dir).replace(

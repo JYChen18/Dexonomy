@@ -71,7 +71,7 @@ def _single_validation(params):
             break
 
     sim_env.debug_postprocess(
-        save_path=input_npy_path.replace(configs.init_dir, configs.debug_dir).replace(
+        save_path=input_npy_path.replace(configs.grasp_dir, configs.debug_dir).replace(
             ".npy", ".gif"
         )
     )
@@ -86,7 +86,7 @@ def _single_validation(params):
             and configs.update_template is not False
         ):
             tmp_npy_path = input_npy_path.replace(
-                configs.grasp_dir, configs.template_dir
+                configs.grasp_dir, configs.new_template_dir
             )
             os.makedirs(os.path.dirname(tmp_npy_path), exist_ok=True)
             os.system(

@@ -1,14 +1,14 @@
-one_for_each_obj: False
-data_type: "grasp" # "init" or "grasp" or "template"
-check_succ: True
+max_num: 100
+data_type: succ # init or grasp or succ or init_template or new_template
+check_success:    # True or False or None
 
-vis_hand_contact: False
-vis_hand_sk: False
+hand:
+  mode: visual  # visual or collision
+  init_mesh: False
+  contact: False
+  skeleton: False
 
-hand_init_mesh: False
-hand_mesh: True
-hand_contact: True
+object:
+  contact: False
 
-vis_obj_mesh: True
-vis_obj_contact: False
 cust_log_dir: ${log_dir}

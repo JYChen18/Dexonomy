@@ -202,13 +202,11 @@ class HandTemplateLibrary:
         xmat, xpos = kinematic.forward_kinematics(hand_data["grasp_qpos"][7:])
         body_xmat = xmat[self.hand_sk_body_id]
         body_xpos = xpos[self.hand_sk_body_id]
-        hand_data["hf_hsk"] = np.concatenate(
-            [
-                (body_xmat @ self.hand_skeleton[..., :3, None]).squeeze(-1) + body_xpos,
-                (body_xmat @ self.hand_skeleton[..., 3:, None]).squeeze(-1),
-            ],
-            axis=-1,
-        )
+        hand_data["hf_hsk"] = (
+            self.hand_skeleton.reshape(-1, 2, 3) @ body_xmat.transpose(0, 2, 1)
+            + body_xpos[:, None, :]
+        ).reshape(-1, 6)
+
         hr = tq.quat2mat(hand_data["grasp_qpos"][3:7]).astype(np.float32)
         ht = hand_data["grasp_qpos"][:3]
         hf_hc = np_inv_transform_points(hand_data["hand_worldframe_contacts"], hr, ht)

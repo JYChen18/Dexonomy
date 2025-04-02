@@ -4,6 +4,6 @@ __pycache__/
 .vscode
 *.npy
 
-debug/
+debug*
 output/
 assets/object

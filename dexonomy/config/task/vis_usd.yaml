@@ -1,5 +1,10 @@
 max_num: 100
-template_seperate: True
-normalize_hand: False
-data_type: ["grasp"] #, "pregrasp", "squeezed"]
+data_type: succ # init or grasp or succ or init_template or new_template
+check_success:    # True or False or None
+qpos_type: ["grasp"] #, "pregrasp", "squeeze"]
+
+hand:
+  mode: visual  # visual or collision
+  normalize: False
+
 cust_log_dir: ${log_dir}

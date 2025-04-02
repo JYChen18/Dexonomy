@@ -9,41 +9,25 @@ import traceback
 import numpy as np
 from transforms3d import quaternions as tq
 
-from util.hand_fk import RobotKinematics
-from dexonomy.data.hand_loader import HandTemplateLoader
-from util.usd_helper import UsdHelper, Material
+from dexonomy.sim import MuJoCo_RobotFK
+from dexonomy.util.usd_helper import UsdHelper, Material
 
 
 def read_npy(params):
-    npy_path, xml_path, task_config = params[0], params[1], params[2]
-    data = np.load(npy_path, allow_pickle=True).item()
-    hand_fk = RobotKinematics(xml_path)
+    npy_path, kin, task_config = params[0], params[1], params[2]
 
-    hand_pose_name_lst = []
-    if "pregrasp" in task_config.data_type:
-        hand_pose_name_lst.append(["pregrasp_pose", "pregrasp_qpos"])
-    if "grasp" in task_config.data_type:
-        hand_pose_name_lst.append(["grasp_pose", "grasp_qpos"])
-    if "squeezed" in task_config.data_type:
-        hand_pose_name_lst.append(["grasp_pose", "squeeze_qpos"])
+    data = np.load(npy_path, allow_pickle=True).item()
 
     obj_pose_lst = []
     hand_pose_lst = []
-    for hand_pose_names in hand_pose_name_lst:
-        pose_name, qpos_name = hand_pose_names[0], hand_pose_names[1]
-        if len(hand_fk.mj_data.qpos) == len(data[qpos_name]) + 7:
-            qpos = np.concatenate([np.array([0.0, 0, 0, 1, 0, 0, 0]), data[qpos_name]])
-        elif len(hand_fk.mj_data.qpos) == len(data[qpos_name]):
-            qpos = data[qpos_name]
-        else:
-            raise NotImplementedError(
-                f"qpos length: {len(data[qpos_name])}; xml length: {len(hand_fk.mj_data.qpos)}"
-            )
+    for qpos_name in task_config.qpos_type:
+        hand_pose = data[f"{qpos_name}_qpos"][:7]
+        hand_qpos = data[f"{qpos_name}_qpos"][7:]
 
         if task_config.normalize_hand:
             # Normalize to hand space
-            ht = data[pose_name][:3]
-            hr = tq.quat2mat(data[pose_name][3:])
+            ht = hand_pose[:3]
+            hr = tq.quat2mat(hand_pose[3:])
             oT = data["obj_pose"][:3]
             oR = tq.quat2mat(data["obj_pose"][3:])
             new_oR = hr.T @ oR
@@ -56,11 +40,16 @@ def read_npy(params):
             new_hand_pose[:3] += delta_bias
         else:
             new_obj_pose = data["obj_pose"]
-            new_hand_pose = data[pose_name]
-            # new_hand_pose = np.array([0, 0, 0.0, 1, 0, 0, 0])
+            new_hand_pose = hand_pose
 
-        hand_fk.forward_kinematics(qpos)
-        hand_link_pose = hand_fk.get_poses(new_hand_pose)
+        xmat, xpos = kin.forward_kinematics(qpos=hand_qpos, pose=hand_pose)
+        hand_link_pose = []
+        for body_name in kin.body_mesh_dict.keys():
+            body_id = kin.body_id_dict[body_name]
+            hand_link_pose.append(
+                np.concatenate([xpos[body_id], tq.mat2quat(xmat[body_id])])
+            )
+        hand_link_pose = np.stack(hand_link_pose)
 
         obj_pose_lst.append(np.concatenate([new_obj_pose, data["obj_scale"]], axis=-1))
         hand_pose_lst.append(hand_link_pose)
@@ -87,57 +76,70 @@ def read_npy_safe(params):
 
 
 def task_vis_usd(configs):
-
-    hand_loader = HandTemplateLoader(**configs.hand)
-    # tmp_path = (
-    #     "/mnt/disk1/jiayichen/code/ContactMatch/assets/hand/shadow/taxonomy/6_v3.yaml"
-    # )
-    # mesh_data = hand_loader.get_template_mesh(tmp_path, False, True, False)
-
-    init_robot_name_lst, init_robot_mesh_lst = hand_loader.kinematic.get_init_meshes()
-
-    logging.info(
-        f"Folder name is {os.path.join(configs.succ_dir, '**', configs.debug_obj, '**')}"
+    kin = MuJoCo_RobotFK(
+        configs.hand.xml_path, vis_mesh_mode=configs.task.hand_mesh_mode
     )
-    if configs.debug_template == "**":
-        temp_name_lst = hand_loader.template_names
-    elif isinstance(configs.debug_template, omegaconf.listconfig.ListConfig):
-        temp_name_lst = configs.debug_template
-    elif isinstance(configs.debug_template, str):
-        temp_name_lst = [configs.debug_template]
+    init_robot_name_lst, init_robot_mesh_lst = kin.get_init_meshes()
+
+    if configs.template_name == "**":
+        temp_name_lst = [
+            p.removesuffix(".npy") for p in os.listdir(configs.init_template_dir)
+        ]
+    elif isinstance(configs.template_name, omegaconf.listconfig.ListConfig):
+        temp_name_lst = configs.template_name
+    elif isinstance(configs.template_name, str):
+        temp_name_lst = [configs.template_name]
 
     for temp_name in temp_name_lst:
-        save_path = os.path.join(
-            configs.visd_dir, "usd", f"{temp_name.replace('**', 'all')}.usd"
-        )
-
         usd_helper = UsdHelper()
 
-        input_folder = os.path.join(
-            configs.succ_dir, temp_name, configs.debug_obj, "**"
-        )
-        input_file_lst = glob(input_folder)
+        task_config = configs.task
+        if task_config.data_type == "init_template":
+            data_folder = configs.init_template_dir
+            input_path_lst = glob(
+                os.path.join(data_folder, configs.template_name + ".npy")
+            )
+        else:
+            if task_config.data_type == "grasp":
+                data_folder, check_folder = configs.grasp_dir, configs.succ_dir
+            elif task_config.data_type == "init":
+                data_folder, check_folder = configs.init_dir, configs.grasp_dir
+            elif task_config.data_type == "succ":
+                data_folder, check_folder = configs.succ_dir, None
+            elif task_config.data_type == "new_template":
+                data_folder, check_folder = configs.new_template_dir, None
+            else:
+                raise NotImplementedError
+            input_path_example = os.path.join(
+                data_folder, configs.template_name, configs.obj_name, "**"
+            )
+            input_path_lst = glob(input_path_example)
+            if check_folder is not None and task_config.check_success is not None:
+                check_path_lst = glob(
+                    os.path.join(
+                        check_folder, configs.template_name, configs.obj_name, "**"
+                    )
+                )
+                if task_config.check_success:
+                    input_path_lst = list(
+                        set(input_path_lst).difference(check_path_lst)
+                    )
+                elif not task_config.check_success:
+                    input_path_lst = list(
+                        set(input_path_lst).intersection(check_path_lst)
+                    )
 
-        if len(input_file_lst) == 0:
+        if len(input_path_lst) == 0:
             continue
-        logging.info(f"Find {len(input_file_lst)} graspdata for {temp_name}")
+        logging.info(f"Find {len(input_path_lst)} data for {input_path_example}")
 
-        if configs.task.max_num > 0 and len(input_file_lst) > configs.task.max_num:
-            input_file_lst = np.random.permutation(input_file_lst)[
+        if configs.task.max_num > 0 and len(input_path_lst) > configs.task.max_num:
+            input_path_lst = np.random.permutation(input_path_lst)[
                 : configs.task.max_num
             ]
+        logging.info(f"Use {configs.task.max_num}")
 
-        # final_path_lst = []
-        # data_dict = {}
-        # for p in input_file_lst:
-        #     folder_name = os.path.dirname(p)
-        #     if folder_name not in data_dict.keys():
-        #         data_dict[folder_name] = True
-        #         final_path_lst.append(p)
-        # input_file_lst = final_path_lst
-        # logging.info(f"Find {len(input_file_lst)} graspdata for {temp_name}")
-
-        param_lst = [(i, configs.hand.xml_path, configs.task) for i in input_file_lst]
+        param_lst = [(i, kin, configs.task) for i in input_path_lst]
         with multiprocessing.Pool(processes=configs.n_worker) as pool:
             result_iter = pool.imap_unordered(read_npy_safe, param_lst)
             result_iter = [r for r in list(result_iter) if r is not None]
@@ -176,25 +178,12 @@ def task_vis_usd(configs):
                 obj_pose_scale_lst[count : count + data_length, i] = v["obj_pose_scale"]
                 count += data_length
 
+        save_path = os.path.join(
+            configs.vis_usd_dir, "usd", f"{temp_name.replace('**', 'all')}.usd"
+        )
         usd_helper.create_stage(
             save_path, timesteps=len(result_iter) * data_length, dt=0.01
         )
-        # import pdb
-        # pdb.set_trace()
-        # usd_helper.add_meshlst_to_stage(
-        #     [mesh_data["contact_normal_mesh"]],
-        #     ["cn"],
-        #     np.array([0.0, 0, 0, 1, 0, 0, 0, 1])[None, None],
-        #     obstacles_frame="cn",
-        #     material=Material(color=[0.3, 0.3, 0.3, 1.0], name="cn"),
-        # )
-        # usd_helper.add_meshlst_to_stage(
-        #     [mesh_data["contact_point_mesh"]],
-        #     ["cp"],
-        #     np.array([0.0, 0, 0, 1, 0, 0, 0, 1])[None, None],
-        #     obstacles_frame="cp",
-        #     material=Material(color=[0.5, 0.5, 0.5, 1.0], name="cp"),
-        # )
 
         # Add hands
         usd_helper.add_meshlst_to_stage(
