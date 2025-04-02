@@ -99,11 +99,11 @@ def np_inv_transform_points(points, rot, trans=0.0, scale=1):
     return resulted_points
 
 
-def np_get_delta_qpos(qpos1, qpos2):
+def np_get_delta_pose(pose1, pose2):
     # qpos: [x, y, z, qw, qx, qy, qz]
-    delta_pos = np.linalg.norm(qpos1[:3] - qpos2[:3])  # (1)
-    q1_inv = tq.qinverse(qpos1[3:]).astype(np.float32)
-    q_rel = tq.qmult(qpos2[3:], q1_inv).astype(np.float32)
+    delta_pos = np.linalg.norm(pose1[:3] - pose2[:3])  # (1)
+    q1_inv = tq.qinverse(pose1[3:]).astype(np.float32)
+    q_rel = tq.qmult(pose2[3:], q1_inv).astype(np.float32)
     if np.abs(q_rel[0]) > 1:
         q_rel[0] = 1
     angle = 2 * np.arccos(q_rel[0])

@@ -88,7 +88,7 @@ def _single_hand_refine(params):
     sim_env = MuJoCo_OptEnv(
         hand_xml_path=hand_config.xml_path,
         hand_add_mocap=hand_config.add_mocap,
-        hand_exclude_table_contact=hand_config.exclude_hand_table_contact,
+        hand_exclude_table_contact=hand_config.exclude_table_contact,
         friction_coef=None,
         obj_cfg_lst=obj_cfg_lst,
         debug_render=configs.debug_render,
@@ -172,7 +172,7 @@ def _single_hand_refine(params):
     if contact_wrench is None:
         return input_npy_path
 
-    sim_env.get_squeezed_qpos(
+    grasp_data["squeeze_qpos"] = sim_env.get_squeeze_qpos(
         new_grasp_qpos,
         hand_body,
         hand_point,

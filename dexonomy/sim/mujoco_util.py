@@ -18,6 +18,7 @@ from dexonomy.util.np_rot_util import (
     np_array32,
     np_transform_points,
     np_inv_transform_points,
+    np_get_delta_pose,
 )
 
 
@@ -190,6 +191,9 @@ class MuJoCo_BaseEnv:
         self.rigid_obj_init_pose.append(pose)
         return
 
+    def _add_articulated_object(self, urdf_path, pose, scale):
+        raise NotImplementedError
+
     def _add_plane(self, pose=[0.0, 0, 0], size=[0, 0, 1.0]):
         plane_geom = self.spec.worldbody.add_geom(
             name=f"plane_collision_{self.plane_num}",
@@ -229,7 +233,6 @@ class MuJoCo_BaseEnv:
             return self._qpos2ctrl_matrix @ hand_qpos
 
     def get_interest_rigid_object_pose(self):
-        raise NotImplementedError
         return self.data.qpos[
             -7
             * self.obj_freejoint
@@ -441,7 +444,7 @@ class MuJoCo_OptEnv(MuJoCo_BaseEnv):
         self.data.qvel[:] = 0
         return
 
-    def get_squeezed_qpos(
+    def get_squeeze_qpos(
         self, grasp_qpos, hand_body_name, hand_worldframe_contact, contact_wrench
     ):
         self.data.qfrc_applied[:] = 0
@@ -487,6 +490,25 @@ class MuJoCo_TestEnv(MuJoCo_BaseEnv):
             g.friction[:2] = friction_coef
             g.condim = 4
         return
+
+    def test_mocap_notable(
+        self, grasp_qpos, squeeze_qpos, extforce, trans_thre, angle_thre
+    ):
+        self.reset_qpos(grasp_qpos)
+        pre_obj_pose = self.get_interest_rigid_object_pose()
+        self.control_hand_with_interp(grasp_qpos, squeeze_qpos)
+        self.set_rigid_object_extforce(extforce)
+        for _ in range(10):
+            self.control_hand_step(step_inner=50)
+            latter_obj_pose = self.get_interest_rigid_object_pose()
+            delta_pos, delta_angle = np_get_delta_pose(pre_obj_pose, latter_obj_pose)
+            succ_flag = (delta_pos < trans_thre) & (delta_angle < angle_thre)
+            if not succ_flag:
+                break
+        return
+
+    def test_arm(self):
+        raise NotImplementedError
 
 
 class MuJoCo_RobotFK:
