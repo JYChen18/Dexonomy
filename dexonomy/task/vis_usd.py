@@ -96,9 +96,10 @@ def task_vis_usd(configs):
         task_config = configs.task
         if task_config.data_type == "init_template":
             data_folder = configs.init_template_dir
-            input_path_lst = glob(
-                os.path.join(data_folder, configs.template_name + ".npy")
+            input_path_example = os.path.join(
+                data_folder, configs.template_name + ".npy"
             )
+            input_path_lst = glob(input_path_example)
         else:
             if task_config.data_type == "grasp":
                 data_folder, check_folder = configs.grasp_dir, configs.succ_dir
@@ -111,14 +112,15 @@ def task_vis_usd(configs):
             else:
                 raise NotImplementedError
             input_path_example = os.path.join(
-                data_folder, configs.template_name, configs.obj_name, "**"
+                data_folder,
+                configs.template_name,
+                configs.obj_name,
+                configs.data_name + ".npy",
             )
             input_path_lst = glob(input_path_example)
             if check_folder is not None and task_config.check_success is not None:
                 check_path_lst = glob(
-                    os.path.join(
-                        check_folder, configs.template_name, configs.obj_name, "**"
-                    )
+                    input_path_example.replace(data_folder, check_folder)
                 )
                 if task_config.check_success:
                     input_path_lst = list(

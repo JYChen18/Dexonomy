@@ -461,6 +461,7 @@ class MuJoCo_OptEnv(MuJoCo_BaseEnv):
                 self.data.qfrc_applied,
             )
         delta_qpos = np.copy(self.data.qfrc_applied)
+        self.data.qfrc_applied[:] = 0
         actuator_gainprm = self.model.actuator_gainprm[:, 0]
         for i in range(len(delta_qpos)):
             actuator_id = np.where(self._qpos2ctrl_matrix[:, i] != 0)[0]

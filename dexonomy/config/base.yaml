@@ -11,6 +11,7 @@ debug_viewer: False
 debug_render: False
 template_name: "**"
 obj_name: "**"
+data_name: '**'
 
 obj_mass: 0.1   # unit: kg
 force_closure: True

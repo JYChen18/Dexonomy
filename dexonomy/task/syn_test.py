@@ -108,7 +108,10 @@ def safe_validation(params):
 def task_syn_test(configs):
     input_path_lst = glob.glob(
         os.path.join(
-            configs.grasp_dir, configs.template_name, configs.obj_name, "**.npy"
+            configs.grasp_dir,
+            configs.template_name,
+            configs.obj_name,
+            configs.data_name + ".npy",
         )
     )
     logged_paths = []

@@ -253,7 +253,10 @@ def _single_hand_refine(params):
 def task_syn_hand(configs):
     input_path_lst = glob.glob(
         os.path.join(
-            configs.init_dir, configs.template_name, configs.obj_name, "**.npy"
+            configs.init_dir,
+            configs.template_name,
+            configs.obj_name,
+            configs.data_name + ".npy",
         )
     )
 

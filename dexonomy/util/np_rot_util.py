@@ -87,7 +87,7 @@ def np_inv_transform_points(points, rot, trans=0.0, scale=1):
         resulted_points = np.concatenate(
             [
                 ((points[..., :3] - trans) @ rot) / scale,
-                points[..., 3:] @ rot.T,
+                points[..., 3:] @ rot,
             ],
             axis=-1,
         )

@@ -23,26 +23,20 @@ conda install pytorch==2.5.0 pytorch-cuda=12.1 -c pytorch -c nvidia
 pip install -e .
 ```
 
-2. Run
+## Run
+1. **Prepare object assets**. Download our pre-processed object assets `DGN_obj_processed.zip` and `DGN_obj_split.zip` from [here](https://huggingface.co/datasets/JiayiChenPKU/BODex) and organize the unzipped folders as below. Alternatively, new object assets can be pre-processed using [MeshProcess](https://github.com/JYChen18/MeshProcess).
 ```
-# Run three tasks in a single command line
-python script.py       
-
-# Run each task individually. 
-python main.py task=csample     
-python main.py task=mjopt     
-python main.py task=mjtest     
+src/curobo/content/assets/object/DGN_obj
+|- processed_data
+|  |- core_bottle_1a7ba1f4c892e2da30711cdbdbc73924
+|  |_ ...
+|- valid_split
+|  |- all.json
+|  |_ ...
 ```
 
-3. Visualization
+2. **Synthesize grasps** for a specific grasp type.
 ```
-# Get quantitative numbers
-python main.py task=stat
-
-# Save rendered images in USD format
-python main.py task=usd 
-
-# Save raw 3D meshes in OBJ format
-python main.py task=visd debug_template=1_LargeDiameter debug_obj=core_bottle_3b0e35ff08f09a85f0d11ae402ef940e
-
+python -m dexonomy.script 'template_name=[1_Large_Diameter]'  
 ```
+More detailed exmaples can be found in .
