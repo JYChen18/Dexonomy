@@ -74,20 +74,23 @@ def _single_hand_refine(params):
 
     grasp_data = np.load(input_npy_path, allow_pickle=True).item()
 
+    obj_cfg_lst = [
+        {
+            "type": "rigid",
+            "mesh_dir": os.path.join(grasp_data["obj_path"], "urdf/meshes"),
+            "pose": grasp_data["obj_pose"],
+            "scale": grasp_data["obj_scale"],
+        }
+    ]
+    if configs.has_floor_z0:
+        obj_cfg_lst.append({"type": "plane", "pose": [0.0, 0, 0], "size": [0.0, 0, 1]})
+
     sim_env = MuJoCo_OptEnv(
         hand_xml_path=hand_config.xml_path,
         hand_add_mocap=hand_config.add_mocap,
         hand_exclude_table_contact=hand_config.exclude_hand_table_contact,
         friction_coef=None,
-        obj_cfg_lst=[
-            {"type": "plane", "pose": [0.0, 0, 0], "size": [0.0, 0, 1]},
-            {
-                "type": "rigid",
-                "mesh_dir": os.path.join(grasp_data["obj_path"], "urdf/meshes"),
-                "pose": grasp_data["obj_pose"],
-                "scale": grasp_data["obj_scale"],
-            },
-        ],
+        obj_cfg_lst=obj_cfg_lst,
         debug_render=configs.debug_render,
         debug_viewer=configs.debug_viewer,
     )
@@ -211,6 +214,7 @@ def _single_hand_refine(params):
         sim_env.set_rigid_object_margin(task_config.pregrasp.ho_target_dist)
 
         for ii in range(task_config.pregrasp.outer_iter):
+            sim_env.keep_hand_stable()
             sim_env.control_hand_step(task_config.grasp.inner_iter)
 
             ho_contact_lst, hh_contact_lst = sim_env.get_contact_info()
@@ -227,6 +231,12 @@ def _single_hand_refine(params):
             skip_logging=False,
         ):
             return input_npy_path
+
+    sim_env.debug_postprocess(
+        save_path=input_npy_path.replace(configs.init_dir, configs.debug_dir).replace(
+            ".npy", ".gif"
+        )
+    )
 
     os.makedirs(os.path.dirname(grasp_npy_path), exist_ok=True)
     grasp_data["evolution_num"] += 1
@@ -257,7 +267,7 @@ def task_syn_hand(configs):
     logging.info(f"Find {len(input_path_lst)} initialization")
 
     iterable_params = zip(input_path_lst, [configs] * len(input_path_lst))
-    if configs.debug or configs.debug_view:
+    if configs.debug or configs.debug_viewer:
         for ip in iterable_params:
             _single_hand_refine(ip)
     else:

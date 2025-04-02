@@ -1,9 +1,11 @@
 import os
 import pdb
 from typing import List, Dict
+import logging
 
-os.environ["MUJOCO_GL"] = "osmesa"
+os.environ["MUJOCO_GL"] = "glfw"
 
+import imageio
 import trimesh
 import numpy as np
 import mujoco
@@ -52,7 +54,7 @@ class MuJoCo_BaseEnv:
         self.spec.option.enableflags = mujoco.mjtEnableBit.mjENBL_NATIVECCD
 
         if debug_render or debug_viewer:
-            self._add_for_render()
+            self._add_for_visualization()
 
         self._add_hand(hand_xml_path, hand_add_mocap, hand_exclude_table_contact)
 
@@ -199,7 +201,7 @@ class MuJoCo_BaseEnv:
         self.plane_num += 1
         return
 
-    def _add_for_render(self):
+    def _add_for_visualization(self):
         self.spec.add_texture(
             type=mujoco.mjtTexture.mjTEXTURE_SKYBOX,
             builtin=mujoco.mjtBuiltin.mjBUILTIN_GRADIENT,
@@ -214,7 +216,7 @@ class MuJoCo_BaseEnv:
             castshadow=False,
         )
         self.spec.worldbody.add_camera(
-            name="closeup", pos=[0.75, 1.0, 1.0], xyaxes=[-1, 0, 0, 0, -1, 1]
+            name="closeup", pos=[0.0, 1.0, 1.0], xyaxes=[-1, 0, 0, 0, -1, 1]
         )
 
     def _set_friction(self, friction_coef: tuple[float, float]):
@@ -357,8 +359,19 @@ class MuJoCo_BaseEnv:
             self.debug_images.append(pixels)
 
         if self.debug_viewer is not None:
-            raise NotImplementedError
+            self.debug_viewer.sync()
+            # pdb.set_trace()
         return
+
+    def debug_postprocess(self, save_path=None):
+        if self.debug_render is not None:
+            assert save_path is not None
+            os.makedirs(os.path.dirname(save_path), exist_ok=True)
+            imageio.mimsave(save_path, self.debug_images)
+            logging.info(f"Save GIF to {save_path}")
+
+        if self.debug_viewer is not None:
+            self.debug_viewer.close()
 
 
 class MuJoCo_OptEnv(MuJoCo_BaseEnv):
@@ -420,6 +433,13 @@ class MuJoCo_OptEnv(MuJoCo_BaseEnv):
         self.data.ctrl = self._qpos2ctrl(self.data.qpos)
         self.data.qvel[:] = 0
         return np_array32(total_loss)
+
+    def keep_hand_stable(self):
+        self.data.qfrc_applied[:] = 0
+        self.data.xfrc_applied[:] = 0
+        self.data.ctrl = self._qpos2ctrl(self.data.qpos)
+        self.data.qvel[:] = 0
+        return
 
     def get_squeezed_qpos(
         self, grasp_qpos, hand_body_name, hand_worldframe_contact, contact_wrench

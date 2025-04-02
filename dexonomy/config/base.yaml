@@ -34,6 +34,7 @@ succ_dir: ${save_dir}/succgrasp
 new_template_dir: ${save_dir}/template
 vis_3d_dir: ${save_dir}/vis_3d
 vis_usd_dir: ${save_dir}/vis_usd
+debug_dir: ${save_dir}/debug
 
 # Path for logs
 log_id: 0     # Allow parallelize "syn_obj" task

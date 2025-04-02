@@ -13,6 +13,7 @@ dependencies = [
     "mujoco==3.2.7",
     "trimesh==4.5.3",
     "matplotlib",
+    "imageio",
     "pyyaml",
     "qpsolvers[clarabel]",
     "transforms3d",
