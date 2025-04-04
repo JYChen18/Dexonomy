@@ -26,7 +26,7 @@ pip install -e .
 ## Run
 1. **Prepare object assets**. Download our pre-processed object assets `DGN_obj_processed.zip` and `DGN_obj_split.zip` from [here](https://huggingface.co/datasets/JiayiChenPKU/BODex) and organize the unzipped folders as below. Alternatively, new object assets can be pre-processed using [MeshProcess](https://github.com/JYChen18/MeshProcess).
 ```
-src/curobo/content/assets/object/DGN_obj
+assets/object/DGN_obj
 |- processed_data
 |  |- core_bottle_1a7ba1f4c892e2da30711cdbdbc73924
 |  |_ ...
@@ -37,6 +37,7 @@ src/curobo/content/assets/object/DGN_obj
 
 2. **Synthesize grasps** for a specific grasp type.
 ```
-python -m dexonomy.script 'template_name=[1_Large_Diameter]'  
+python -m dexonomy.main task=anno2temp   # generate initial template from human annotations
+python -m dexonomy.script 'template_name=[1_Large_Diameter]'
 ```
-More detailed exmaples can be found in .
+More detailed instructions can be found in `example`.
