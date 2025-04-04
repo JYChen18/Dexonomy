@@ -1,0 +1,23 @@
+qpos: [-0.33, 0.31, 1.01, 1.01, -0.26, 0.61, 1.14, 1.14, 0.17, 0.85, 1.04, 1.04, 0.05, 0.11, 0.98, 0.97, 0.97, 0.05, 0.46, -0.13, 0.02, 0.23]
+
+contact: 
+    rh_ffdistal: 1
+    # rh_ffmiddle: 1
+    rh_ffproximal: 1
+
+    rh_mfdistal: 1
+    # rh_mfmiddle: 1
+    rh_mfproximal: 1
+
+    rh_rfdistal: 1
+    # rh_rfmiddle: 1
+    rh_rfproximal: 1
+
+    rh_lfdistal: 1
+    # rh_lfmiddle: 1
+    rh_lfproximal: 1
+    rh_lfmetacarpal: [-0.032455,-0.012000,0.085421,0.000978,-0.999999,0.000978]
+
+    rh_thdistal: 0
+    
+    rh_palm: [0.010525,-0.012000,0.113704,0.000978,-0.999999,0.000978]

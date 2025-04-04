@@ -19,9 +19,7 @@ def _single_anno2temp(params):
         params[3],
     )
     anno_data = load_yaml(anno_path)
-    qpos_lst = np_array32(
-        anno_data["qpos"].replace("<key qpos='", "").replace("'/>", "").split(" ")
-    )
+    qpos_lst = np_array32(anno_data["qpos"])
     kin = MuJoCo_RobotFK(xml_path=configs.hand.xml_path)
     xmat, xpos = kin.forward_kinematics(qpos_lst)
 
