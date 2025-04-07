@@ -52,21 +52,12 @@ def _single_anno2temp(params):
                 assert j not in check_lst
                 check_lst.append(j)
 
-    if "obj_gravity_direction" not in anno_data:
-        obj_gravity_direction = np_array32([0.0, 0, 1, 0, 0, 0])
-    else:
-        obj_gravity_direction = np_array32(anno_data["obj_gravity_direction"])
-        assert len(obj_gravity_direction) == 6 and np.testing.assert_allclose(
-            np.linalg.norm(obj_gravity_direction), 1
-        )
-
     temp_data = {
         "hand_template_name": os.path.basename(anno_path).removesuffix(".yaml"),
         "grasp_qpos": np.concatenate([np_array32([0.0, 0, 0, 1, 0, 0, 0]), qpos_lst]),
         "hand_worldframe_contacts": np.stack(hand_worldframe_contact, axis=0),
         "hand_contact_body_names": list(anno_data["contact"].keys()),
         "necessary_contact_body_names": necessary_contact_body_names,
-        "obj_gravity_direction": obj_gravity_direction,
         "evolution_num": np_array32([0.0]),
     }
     temp_path = anno_path.replace(

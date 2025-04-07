@@ -1,8 +1,9 @@
 import os
 import random
+from glob import glob
 
 import numpy as np
-import torch
+from transforms3d import quaternions as tq
 from torch.utils.data import Dataset, DataLoader
 from torch.utils.data._utils.collate import default_collate
 import trimesh
@@ -12,106 +13,107 @@ logger = logging.getLogger("trimesh")
 logger.setLevel(logging.ERROR)
 
 from dexonomy.util.file_util import load_json
-from dexonomy.util.np_rot_util import np_normalize_vector
+from dexonomy.util.np_rot_util import (
+    np_array32,
+    np_normal_to_rot,
+    np_axis_angle_rotation,
+)
+
+
+def sample_init_pose(tm_obj: trimesh.Trimesh, init_point_num, init_inplane_num):
+    # Sample contact points and corresponding normals
+    points, tri_ind = trimesh.sample.sample_surface_even(tm_obj, init_point_num)
+    more_point_num = init_point_num - points.shape[0]
+    if more_point_num > 0:
+        new_points, new_tri_ind = trimesh.sample.sample_surface(tm_obj, more_point_num)
+        points = np.concatenate([points, new_points], axis=0)
+        tri_ind = np.concatenate([tri_ind, new_tri_ind], axis=0)
+    normals = -tm_obj.face_normals[tri_ind]
+
+    # Contact to pose
+    rot_base = np_normal_to_rot(normals)[None]
+    angles = np.linspace(-np.pi, np.pi, init_inplane_num)
+    delta_rot = np_axis_angle_rotation("X", angles).reshape(-1, 1, 3, 3)
+    sampled_rot = (rot_base @ delta_rot).reshape(-1, 3, 3)
+    sampled_trans = np.tile(points, (init_inplane_num, 1))
+
+    return sampled_rot, sampled_trans
 
 
 class ObjSampleDataset(Dataset):
 
-    def __init__(
-        self,
-        root_folder,
-        init_point_num,
-        load_pose,
-        selection={},
-    ):
-        self.tm_mesh_cache = {}
-        self.root_folder = root_folder
+    def __init__(self, init_point_num, init_inplane_num, cfg_path, cfg_num):
         self.init_point_num = init_point_num
-        self.load_pose = load_pose
+        self.init_inplane_num = init_inplane_num
+        self.path_lst = glob(cfg_path)
+        if cfg_num is not None and cfg_num > 0:
+            self.path_lst = self.path_lst[:cfg_num]
 
-        self.object_id_lst = selection["id"]
-        if self.object_id_lst is None:
-            if selection["id_lst_path"] is not None:
-                self.object_id_lst = load_json(selection["id_lst_path"])
-            else:
-                self.object_id_lst = os.listdir(root_folder)
-        if selection["shuffle"]:
-            self.object_id_lst = np.random.permutation(self.object_id_lst)
-        if selection["start"] is not None and selection["end"] is not None:
-            self.object_id_lst = self.object_id_lst[
-                selection["start"] : selection["end"]
-            ]
-
-        print(f"Object number: {len(self.object_id_lst)}")
+        print(f"Object number: {len(self.path_lst)}")
         return
 
     def __len__(self):
-        return len(self.object_id_lst)
+        return len(self.path_lst)
 
     def __getitem__(self, index):
-        obj_name = self.object_id_lst[index]
-        obj_path = os.path.join(self.root_folder, obj_name)
-        if self.load_pose:
-            obj_pose = load_json(os.path.join(obj_path, "info/tabletop_pose.json"))
-            obj_pose_id = random.randint(0, len(obj_pose) - 1)
-            obj_pose = np.array(obj_pose[obj_pose_id]).astype(np.float32)
-            obj_pose[3:] = np_normalize_vector(obj_pose[3:])
-        else:
-            obj_pose_id = -1
-            obj_pose = np.array([0.0, 0, 0, 1, 0, 0, 0]).astype(np.float32)
+        scene_cfg_path = self.path_lst[index]
+        scene_cfg = np.load(scene_cfg_path, allow_pickle=True).item()
 
-        if obj_name not in self.tm_mesh_cache.keys():
-            mesh_path = os.path.join(self.root_folder, obj_name, "mesh/simplified.obj")
-            tm_obj = trimesh.load(mesh_path, force="mesh")
-            self.tm_mesh_cache[obj_name] = tm_obj
-        else:
-            tm_obj = self.tm_mesh_cache[obj_name]
+        obj_name = scene_cfg["interest_obj_name"]
+        obj_info = scene_cfg["scene"][obj_name]
+        tm_obj = trimesh.load(obj_info["file_path"], force="mesh")
+        obj_scale = obj_info["scale"]
+        obj_pose = np_array32(obj_info["pose"])
 
-        sampled_points, sampled_tri_ind = trimesh.sample.sample_surface_even(
-            tm_obj, self.init_point_num
+        sampled_rot, sampled_trans = sample_init_pose(
+            tm_obj, self.init_point_num, self.init_inplane_num
         )
-        more_point_num = self.init_point_num - sampled_points.shape[0]
-        if more_point_num > 0:
-            new_sampled_points, new_sampled_tri_ind = trimesh.sample.sample_surface(
-                tm_obj, more_point_num
-            )
-            sampled_points = np.concatenate(
-                [sampled_points, new_sampled_points], axis=0
-            )
-            sampled_tri_ind = np.concatenate(
-                [sampled_tri_ind, new_sampled_tri_ind], axis=0
-            )
-        sampled_normals = -tm_obj.face_normals[sampled_tri_ind]
+        wf_ogc = (
+            tq.rotate_vector(tm_obj.center_mass * obj_scale, obj_pose[3:])
+            + obj_pose[:3]
+        )
+
+        collision_plane = None
+        for obj in scene_cfg["scene"].values():
+            if obj["type"] == "plane":
+                collision_plane = np_array32(obj["pose"])
 
         return {
-            "obj_name": obj_name,
-            "obj_path": obj_path,
-            "obj_pose_id": obj_pose_id,
-            "swf_of_pose": obj_pose,
-            "of_ogc": np.array(tm_obj.center_mass, dtype=np.float32),
-            "tm_mesh": self.tm_mesh_cache[obj_name],
-            "sampled_points": np.array(sampled_points, dtype=np.float32),
-            "sampled_normals": np.array(sampled_normals, dtype=np.float32),
+            "scene_cfg": scene_cfg,
+            "collision_plane": collision_plane,
+            "collision_mesh": (obj_name, tm_obj),
+            "obj_scale": np_array32(obj_scale),
+            "wf_sof_pose": np_array32(obj_info["pose"]),
+            "wf_ogc": np_array32(wf_ogc),
+            "wf_ogd": np_array32(scene_cfg["interest_direction"]),
+            "sampled_rot": np_array32(sampled_rot),
+            "sampled_trans": np_array32(sampled_trans),
         }
 
 
 def _customized_collate_fn(list_data):
-    if "tm_mesh" in list_data[0]:
-        tm_mesh_lst = [i.pop("tm_mesh") for i in list_data]
-    else:
-        tm_mesh_lst = None
+    mesh_lst = []
+    scene_cfg_lst = []
+    no_plane = list_data[0]["collision_plane"] is None
+    for i, data in enumerate(list_data):
+        if no_plane:
+            assert (
+                data.pop("collision_plane") is None
+            ), "Do not support unbatchable collision planes"
+        mesh_lst.append(data.pop("collision_mesh"))
+        scene_cfg_lst.append(data.pop("scene_cfg"))
     ret_data = default_collate(list_data)
-    if tm_mesh_lst is not None:
-        ret_data["tm_mesh"] = tm_mesh_lst
+    ret_data["collision_mesh"] = mesh_lst
+    ret_data["scene_cfg"] = scene_cfg_lst
     return ret_data
 
 
 def get_object_dataloader(configs, n_worker):
     dataset = ObjSampleDataset(
-        root_folder=configs.root_folder,
         init_point_num=configs.init_point_num,
-        load_pose=configs.load_pose,
-        selection=configs.selection,
+        init_inplane_num=configs.init_inplane_num,
+        cfg_path=configs.cfg_path,
+        cfg_num=configs.cfg_num,
     )
     dataloader = DataLoader(
         dataset,

@@ -50,7 +50,6 @@ class HandTemplateLibrary:
             "nf_hf_trans": [],
             "nf_hc": [],
             "hf_hsk": [],
-            "hf_ogd": [],
             "evolution_num": [],
         }
 
@@ -216,9 +215,6 @@ class HandTemplateLibrary:
         hand_data["nf_hf_rot"] = nf_hf_rot
         hand_data["nf_hf_trans"] = nf_hf_trans
         hand_data["nf_hc"] = np_transform_points(hf_hc, nf_hf_rot, nf_hf_trans)
-        hand_data["hf_ogd"] = np_inv_transform_points(
-            hand_data.pop("obj_gravity_direction"), hr
-        )
         hand_data["hand_path"] = data_path
         return hand_data
 

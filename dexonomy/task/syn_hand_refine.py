@@ -74,23 +74,12 @@ def _single_hand_refine(params):
 
     grasp_data = np.load(input_npy_path, allow_pickle=True).item()
 
-    obj_cfg_lst = [
-        {
-            "type": "rigid",
-            "mesh_dir": os.path.join(grasp_data["obj_path"], "urdf/meshes"),
-            "pose": grasp_data["obj_pose"],
-            "scale": grasp_data["obj_scale"],
-        }
-    ]
-    if configs.has_floor_z0:
-        obj_cfg_lst.append({"type": "plane", "pose": [0.0, 0, 0], "size": [0.0, 0, 1]})
-
     sim_env = MuJoCo_OptEnv(
         hand_xml_path=hand_config.xml_path,
         hand_add_mocap=hand_config.add_mocap,
         hand_exclude_table_contact=hand_config.exclude_table_contact,
         friction_coef=None,
-        obj_cfg_lst=obj_cfg_lst,
+        scene_cfg=grasp_data["scene_cfg"],
         debug_render=configs.debug_render,
         debug_viewer=configs.debug_viewer,
     )
@@ -128,19 +117,7 @@ def _single_hand_refine(params):
             continue
         break
 
-    new_grasp_qpos = np_array32(sim_env.get_hand_qpos())
-    if configs.override_ogd:
-        grasp_data["obj_gravity_direction"] = np_array32([0.0, 0, -1, 0, 0, 0])
-    else:
-        new_hr = tq.quat2mat(new_grasp_qpos[3:7])
-        old_hr = tq.quat2mat(grasp_data["grasp_qpos"][3:])
-        grasp_data["obj_gravity_direction"][:3] = (
-            new_hr @ old_hr.T @ (grasp_data["obj_gravity_direction"][:3])
-        )
-        grasp_data["obj_gravity_direction"][3:] = (
-            new_hr @ old_hr.T @ (grasp_data["obj_gravity_direction"][3:])
-        )
-    grasp_data["grasp_qpos"] = new_grasp_qpos
+    grasp_data["grasp_qpos"] = np_array32(sim_env.get_hand_qpos())
 
     if (
         len(ho_contact_lst) == 0
@@ -156,6 +133,11 @@ def _single_hand_refine(params):
             task_config.grasp.body_filter,
         )
     ):
+        sim_env.debug_postprocess(
+            save_path=input_npy_path.replace(
+                configs.init_dir, configs.debug_dir
+            ).replace(".npy", ".gif")
+        )
         return input_npy_path
 
     hand_point = np.array([c["contact_pos"] for c in ho_contact_lst])
@@ -165,16 +147,21 @@ def _single_hand_refine(params):
         hand_point,
         hand_normal,
         configs.obj_mass,
-        grasp_data["obj_gravity_direction"],
+        grasp_data["scene_cfg"]["interest_direction"],
         grasp_data["obj_gravity_center"],
         task_config.grasp.qp_filter,
     )
     if contact_wrench is None:
+        sim_env.debug_postprocess(
+            save_path=input_npy_path.replace(
+                configs.init_dir, configs.debug_dir
+            ).replace(".npy", ".gif")
+        )
         return input_npy_path
 
     grasp_data["squeeze_qpos"] = np_array32(
         sim_env.get_squeeze_qpos(
-            new_grasp_qpos,
+            grasp_data["grasp_qpos"],
             hand_body,
             hand_point,
             10 * contact_wrench,
@@ -232,6 +219,11 @@ def _single_hand_refine(params):
             task_config.pregrasp.coll_filter,
             skip_logging=False,
         ):
+            sim_env.debug_postprocess(
+                save_path=input_npy_path.replace(
+                    configs.init_dir, configs.debug_dir
+                ).replace(".npy", ".gif")
+            )
             return input_npy_path
 
         grasp_data["pregrasp_qpos"] = np_array32(sim_env.get_hand_qpos())

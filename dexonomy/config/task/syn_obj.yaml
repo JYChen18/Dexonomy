@@ -3,17 +3,10 @@ device: "cuda:0"
 
 object:
   batch_size: 10
-  root_folder: ${asset_root}/object/DGN_obj/processed_data
-  selection:
-    id_lst_path:  ${asset_root}/object/DGN_obj/valid_split/all.json
-    id:   
-    start: 0
-    end: 1000
-    shuffle: False 
-  load_pose: ${has_floor_z0}
-  scale_range: [0.05, 0.2]
   init_point_num: 1024
   init_inplane_num: 8
+  cfg_path: ${asset_root}/object/example_obj/processed_data/**/scene_cfg/floating/**.npy
+  cfg_num: 100
 
 matcher:
   opt_iter: 100

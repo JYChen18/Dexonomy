@@ -11,6 +11,7 @@ from transforms3d import quaternions as tq
 
 from dexonomy.sim import MuJoCo_RobotFK
 from dexonomy.util.usd_helper import UsdHelper, Material
+from dexonomy.util.vis_util import scene_cfg2mesh
 
 
 def read_npy(params):
@@ -18,29 +19,10 @@ def read_npy(params):
 
     data = np.load(npy_path, allow_pickle=True).item()
 
-    obj_pose_lst = []
     hand_pose_lst = []
     for qpos_name in task_config.qpos_type:
         hand_pose = data[f"{qpos_name}_qpos"][:7]
         hand_qpos = data[f"{qpos_name}_qpos"][7:]
-
-        if task_config.normalize_hand:
-            # Normalize to hand space
-            ht = hand_pose[:3]
-            hr = tq.quat2mat(hand_pose[3:])
-            oT = data["obj_pose"][:3]
-            oR = tq.quat2mat(data["obj_pose"][3:])
-            new_oR = hr.T @ oR
-            new_oT = hr.T @ (oT - ht)
-            new_obj_pose = np.concatenate([new_oT, tq.mat2quat(new_oR)])
-            new_hand_pose = np.array([0.0, 0, 0, 1, 0, 0, 0])
-
-            delta_bias = np.array([0.0, 0.1, -0.1])
-            new_obj_pose[:3] += delta_bias
-            new_hand_pose[:3] += delta_bias
-        else:
-            new_obj_pose = data["obj_pose"]
-            new_hand_pose = hand_pose
 
         xmat, xpos = kin.forward_kinematics(qpos=hand_qpos, pose=hand_pose)
         hand_link_pose = []
@@ -51,17 +33,10 @@ def read_npy(params):
             )
         hand_link_pose = np.stack(hand_link_pose)
 
-        obj_pose_lst.append(np.concatenate([new_obj_pose, data["obj_scale"]], axis=-1))
         hand_pose_lst.append(hand_link_pose)
 
-    obj_path = data["obj_path"]
-    if not obj_path.endswith(".obj"):
-        obj_path = os.path.join(data["obj_path"], "mesh/coacd.obj")
-    if not os.path.exists(obj_path):
-        raise NotImplementedError
     return {
-        "obj_path": obj_path,
-        "obj_pose_scale": np.stack(obj_pose_lst, axis=0),
+        "scene_cfg": data["scene_cfg"],
         "hand_link_pose": np.stack(hand_pose_lst, axis=0),
     }
 
@@ -76,9 +51,7 @@ def read_npy_safe(params):
 
 
 def task_vis_usd(configs):
-    kin = MuJoCo_RobotFK(
-        configs.hand.xml_path, vis_mesh_mode=configs.task.hand_mesh_mode
-    )
+    kin = MuJoCo_RobotFK(configs.hand.xml_path, vis_mesh_mode=configs.task.hand.mode)
     init_robot_name_lst, init_robot_mesh_lst = kin.get_init_meshes()
 
     if configs.template_name == "**":
@@ -96,9 +69,7 @@ def task_vis_usd(configs):
         task_config = configs.task
         if task_config.data_type == "init_template":
             data_folder = configs.init_template_dir
-            input_path_example = os.path.join(
-                data_folder, configs.template_name + ".npy"
-            )
+            input_path_example = os.path.join(data_folder, temp_name + ".npy")
             input_path_lst = glob(input_path_example)
         else:
             if task_config.data_type == "grasp":
@@ -113,7 +84,7 @@ def task_vis_usd(configs):
                 raise NotImplementedError
             input_path_example = os.path.join(
                 data_folder,
-                configs.template_name,
+                temp_name,
                 configs.obj_name,
                 configs.data_name + ".npy",
             )
@@ -146,12 +117,12 @@ def task_vis_usd(configs):
             result_iter = pool.imap_unordered(read_npy_safe, param_lst)
             result_iter = [r for r in list(result_iter) if r is not None]
 
-        obj_path_dict = {}
+        scene_dict = {}
         for r in result_iter:
-            op = r.pop("obj_path")
-            if op not in obj_path_dict:
-                obj_path_dict[op] = []
-            obj_path_dict[op].append(r)
+            scene_id = r["scene_cfg"]["scene_id"]
+            if scene_id not in scene_dict:
+                scene_dict[scene_id] = []
+            scene_dict[scene_id].append(r)
 
         data_length = len(configs.task.data_type)
 
@@ -163,21 +134,23 @@ def task_vis_usd(configs):
             )
         )
         obj_pose_scale_lst = np.ones(
-            (len(result_iter) * data_length, len(obj_path_dict.keys()), 8)
+            (len(result_iter) * data_length, len(scene_dict.keys()), 8)
         )
         obj_vit_lst = []
         obj_name_lst = []
         obj_mesh_lst = []
         count = 0
-        for i, (k, v_lst) in enumerate(obj_path_dict.items()):
+        for i, (k, v_lst) in enumerate(scene_dict.items()):
             obj_name_lst.append(k.replace("/", "_"))
-            obj_mesh_lst.append(trimesh.load(k, force="mesh"))
+            obj_mesh_lst.append(scene_cfg2mesh(v_lst[0]["scene_cfg"]))
             obj_vit_lst.append([count, count + len(v_lst) * data_length])
             for v in v_lst:
                 hand_pose_scale_lst[count : count + data_length, :, :-1] = v[
                     "hand_link_pose"
                 ]
-                obj_pose_scale_lst[count : count + data_length, i] = v["obj_pose_scale"]
+                obj_pose_scale_lst[count : count + data_length, i] = np.array(
+                    [0.0, 0, 0, 1, 0, 0, 0, 1]
+                )
                 count += data_length
 
         save_path = os.path.join(

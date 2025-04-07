@@ -4,7 +4,7 @@ save_root: output
 save_dir: ${save_root}/${exp_name}_${hand_name}
 skip: True
 n_worker: 16    
-gpu_list: [4,5,6,7]  # only used for CSample
+gpu_list: [1,2,3]  # only used for CSample
 
 debug: False
 debug_viewer: False
@@ -15,8 +15,6 @@ data_name: '**'
 
 obj_mass: 0.1   # unit: kg
 force_closure: True
-has_floor_z0: False
-override_ogd: True
 update_template: "nearest"   # Choices: False, "body", "nearest", "arbi"
 max_template_evolution: 2
 max_template_buffer: 1024

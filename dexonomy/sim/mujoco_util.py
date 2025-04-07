@@ -3,7 +3,7 @@ import pdb
 from typing import List, Dict
 import logging
 
-os.environ["MUJOCO_GL"] = "glfw"
+os.environ["MUJOCO_GL"] = "egl"
 
 import imageio
 import trimesh
@@ -41,8 +41,7 @@ class MuJoCo_BaseEnv:
         hand_add_mocap: bool,
         hand_exclude_table_contact: List[str],
         friction_coef: tuple[float, float] = None,
-        obj_cfg_lst: List[Dict] = None,
-        rigid_obj_interest_id: int = 0,
+        scene_cfg: Dict = None,
         debug_render: bool = False,
         debug_viewer: bool = False,
     ):
@@ -60,12 +59,14 @@ class MuJoCo_BaseEnv:
         self._add_hand(hand_xml_path, hand_add_mocap, hand_exclude_table_contact)
 
         self.rigid_obj_init_pose = []
-        self.rigid_obj_interest_id = rigid_obj_interest_id
-        for obj_cfg in obj_cfg_lst:
-            obj_type = obj_cfg.pop("type")
+        for obj_name, obj_cfg in scene_cfg["scene"].items():
+            obj_type = obj_cfg["type"]
+            if scene_cfg["interest_obj_name"] == obj_name:
+                self.rigid_obj_interest_id = self.rigid_obj_num
+
             if obj_type == "plane":
                 self._add_plane(**obj_cfg)
-            elif obj_type == "rigid":
+            elif obj_type == "rigid_mesh":
                 self._add_rigid_object(**obj_cfg)
             else:
                 raise NotImplementedError
@@ -77,6 +78,9 @@ class MuJoCo_BaseEnv:
         # Get ready for simulation
         self.model = self.spec.compile()
         self.data = mujoco.MjData(self.model)
+
+        with open("debug.xml", "w") as f:
+            f.write(self.spec.to_xml())
 
         mujoco.mj_resetDataKeyframe(self.model, self.data, 0)
         mujoco.mj_forward(self.model, self.data)
@@ -153,52 +157,39 @@ class MuJoCo_BaseEnv:
                 )
         return
 
-    def _add_rigid_object(self, mesh_dir, pose, scale, density=1000):
-        obj_body = self.spec.worldbody.add_body(
-            name=f"rigid_object_{self.rigid_obj_num}",
-            pos=pose[:3],
-            quat=pose[3:],
+    def _add_rigid_object(self, xml_path, pose, scale, density=1000, **kwargs):
+        child_spec = mujoco.MjSpec.from_file(xml_path)
+        for m in child_spec.meshes:
+            m.file = os.path.join(os.path.dirname(xml_path), child_spec.meshdir, m.file)
+        child_spec.meshdir = self.spec.meshdir
+        for g in child_spec.geoms:
+            if g.contype != 0 and g.conaffinity != 0:
+                g.density = density
+                g.margin = self.obj_margin
+        for m in child_spec.meshes:
+            m.scale = scale
+        attach_frame = self.spec.worldbody.add_frame()
+        child_world = attach_frame.attach_body(
+            child_spec.worldbody, f"rigid_{self.rigid_obj_num}", ""
         )
+        child_world.pos = pose[:3]
+        child_world.quat = pose[3:]
         if self.obj_freejoint:
-            obj_body.add_freejoint(name=f"rigid_object_freejoint_{self.rigid_obj_num}")
+            child_world.add_freejoint(name=f"rigid_{self.rigid_obj_num}_freejoint")
 
-        for file in os.listdir(mesh_dir):
-            file_name = file.replace(".obj", "")
-            cvpart_id = file_name.replace("convex_piece_", "")
-            mesh_name = f"rigid_{self.rigid_obj_num}_{file_name}"
-
-            self.spec.add_mesh(
-                name=mesh_name,
-                file=os.path.join(mesh_dir, file),
-                scale=[scale, scale, scale],
-            )
-            obj_body.add_geom(
-                name=f"rigid_object_visual_{self.rigid_obj_num}_{cvpart_id}",
-                type=mujoco.mjtGeom.mjGEOM_MESH,
-                meshname=mesh_name,
-                density=0,
-                contype=0,
-                conaffinity=0,
-            )
-            obj_body.add_geom(
-                name=f"rigid_object_collision_{self.rigid_obj_num}_{cvpart_id}",
-                type=mujoco.mjtGeom.mjGEOM_MESH,
-                meshname=mesh_name,
-                density=density,
-                margin=self.obj_margin,
-            )
         self.rigid_obj_num += 1
         self.rigid_obj_init_pose.append(pose)
         return
 
-    def _add_articulated_object(self, urdf_path, pose, scale):
+    def _add_articulated_object(self, urdf_path, pose, scale, **kwargs):
         raise NotImplementedError
 
-    def _add_plane(self, pose=[0.0, 0, 0], size=[0, 0, 1.0]):
+    def _add_plane(self, pose=[0.0, 0, 0, 1, 0, 0, 0], size=[0, 0, 1.0], **kwargs):
         plane_geom = self.spec.worldbody.add_geom(
             name=f"plane_collision_{self.plane_num}",
             type=mujoco.mjtGeom.mjGEOM_PLANE,
-            pos=pose,
+            pos=pose[:3],
+            quat=pose[3:],
             size=size,
             margin=self.plane_margin,
         )
@@ -307,7 +298,7 @@ class MuJoCo_BaseEnv:
 
     def set_rigid_object_margin(self, obj_margin):
         for i in range(self.model.ngeom):
-            if "rigid_object_collision" in self.model.geom(i).name:
+            if self.model.geom(i).name.startswith("rigid_"):
                 self.model.geom_margin[i] = obj_margin
         return
 
@@ -492,14 +483,48 @@ class MuJoCo_TestEnv(MuJoCo_BaseEnv):
             g.condim = 4
         return
 
-    def test_mocap_notable(
-        self, grasp_qpos, squeeze_qpos, extforce, trans_thre, angle_thre
+    def test_mocap_static(
+        self,
+        grasp_qpos,
+        squeeze_qpos,
+        trans_thre,
+        angle_thre,
+        moving_distance,
+        extforce,
     ):
         self.reset_qpos(grasp_qpos)
         pre_obj_pose = np.copy(self.get_interest_rigid_object_pose())
         self.control_hand_with_interp(grasp_qpos, squeeze_qpos)
         self.set_rigid_object_extforce(extforce)
         for _ in range(10):
+            self.control_hand_step(step_inner=50)
+            latter_obj_pose = self.get_interest_rigid_object_pose()
+            delta_pos, delta_angle = np_get_delta_pose(pre_obj_pose, latter_obj_pose)
+            succ_flag = (delta_pos < trans_thre) & (delta_angle < angle_thre)
+            if not succ_flag:
+                break
+        return succ_flag
+
+    def test_mocap_moving(
+        self,
+        grasp_qpos,
+        squeeze_qpos,
+        trans_thre,
+        angle_thre,
+        moving_distance,
+        extforce,
+    ):
+        target_qpos = np.copy(squeeze_qpos)
+        target_qpos[:3] += moving_distance
+
+        self.reset_qpos(grasp_qpos)
+        pre_obj_pose = np.copy(self.get_interest_rigid_object_pose())
+        pre_obj_pose[:3] += moving_distance
+        self.control_hand_with_interp(grasp_qpos, squeeze_qpos)
+        self.set_rigid_object_extforce(extforce)
+        self.control_hand_with_interp(squeeze_qpos, target_qpos)
+
+        for _ in range(5):
             self.control_hand_step(step_inner=50)
             latter_obj_pose = self.get_interest_rigid_object_pose()
             delta_pos, delta_angle = np_get_delta_pose(pre_obj_pose, latter_obj_pose)

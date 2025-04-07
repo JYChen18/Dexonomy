@@ -40,3 +40,27 @@ def get_line_mesh(point_lst):
         )
     line_mesh = trimesh.util.concatenate(line_mesh_lst)
     return line_mesh
+
+
+def scene_cfg2mesh(scene_cfg):
+    tm_lst = []
+    for obj in scene_cfg["scene"].values():
+        if obj["type"] == "rigid_mesh":
+            tm = trimesh.load(obj["file_path"], force="mesh")
+            tm.vertices *= obj["scale"]
+        elif obj["type"] == "plane":
+            plane_thick = 0.01
+            delta_transform = trimesh.transformations.translation_matrix(
+                [0, 0, -plane_thick / 2]
+            )
+            tm = trimesh.creation.box(
+                extents=[1.0, 1.0, plane_thick], transform=delta_transform
+            )
+        else:
+            raise NotImplementedError
+        rotation_matrix = trimesh.transformations.quaternion_matrix(obj["pose"][3:])
+        rotation_matrix[:3, 3] = obj["pose"][:3]
+        tm.apply_transform(rotation_matrix)
+        tm_lst.append(tm)
+    scene_mesh = trimesh.util.concatenate(tm_lst)
+    return scene_mesh

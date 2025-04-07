@@ -6,7 +6,7 @@ import logging
 import multiprocessing
 
 from dexonomy.sim import MuJoCo_RobotFK
-from dexonomy.util.vis_util import get_arrow_mesh, get_line_mesh
+from dexonomy.util.vis_util import get_arrow_mesh, get_line_mesh, scene_cfg2mesh
 from dexonomy.util.file_util import load_yaml
 
 
@@ -30,14 +30,7 @@ def _single_visd(params):
 
     # Object
     if task_config.data_type != "init_template":
-        obj_path = os.path.join(grasp_data["obj_path"], "mesh/coacd.obj")
-        obj_tm = trimesh.load(obj_path, force="mesh")
-        obj_tm.vertices *= grasp_data["obj_scale"]
-        rotation_matrix = trimesh.transformations.quaternion_matrix(
-            grasp_data["obj_pose"][3:]
-        )
-        rotation_matrix[:3, 3] = grasp_data["obj_pose"][:3]
-        obj_tm.apply_transform(rotation_matrix)
+        obj_tm = scene_cfg2mesh(grasp_data["scene_cfg"])
         if task_config.object.contact:
             point_mesh, arrow_mesh = get_arrow_mesh(
                 grasp_data["obj_worldframe_contacts"][:, :3],
@@ -100,7 +93,9 @@ def task_vis_3d(configs):
         elif task_config.data_type == "new_template":
             data_folder, check_folder = configs.new_template_dir, None
         else:
-            raise NotImplementedError
+            raise NotImplementedError(
+                f"Valid choices: 'grasp', 'init', 'succ', 'init_template', 'new_template'. Current: '{task_config.data_type}' "
+            )
         input_path_example = os.path.join(
             data_folder,
             configs.template_name,

@@ -5,6 +5,5 @@ qpos_type: ["grasp"] #, "pregrasp", "squeeze"]
 
 hand:
   mode: visual  # visual or collision
-  normalize: False
 
 cust_log_dir: ${log_dir}

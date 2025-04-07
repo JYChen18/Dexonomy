@@ -41,6 +41,35 @@ def np_normal_to_rot(
     return np.stack([axis_0, axis_1, axis_2], axis=-1)
 
 
+def np_axis_angle_rotation(axis: str, angle: np.ndarray) -> np.ndarray:
+    """
+    Return the rotation matrices for one of the rotations about an axis
+    of which Euler angles describe, for each value of the angle given.
+
+    Args:
+        axis: Axis label "X" or "Y or "Z".
+        angle: any shape array of Euler angles in radians
+
+    Returns:
+        Rotation matrices as array of shape (..., 3, 3).
+    """
+    cos = np.cos(angle)
+    sin = np.sin(angle)
+    one = np.ones_like(angle)
+    zero = np.zeros_like(angle)
+
+    if axis == "X":
+        R_flat = (one, zero, zero, zero, cos, -sin, zero, sin, cos)
+    elif axis == "Y":
+        R_flat = (cos, zero, sin, zero, one, zero, -sin, zero, cos)
+    elif axis == "Z":
+        R_flat = (cos, -sin, zero, sin, cos, zero, zero, zero, one)
+    else:
+        raise ValueError("letter must be either X, Y or Z.")
+
+    return np.stack(R_flat, -1).reshape(angle.shape + (3, 3))
+
+
 def np_transform_points(points, rot, trans=0.0, scale=1):
     if isinstance(points, List):
         points = np_array32(points)
