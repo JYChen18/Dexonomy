@@ -3,8 +3,6 @@ import pdb
 from typing import List, Dict
 import logging
 
-os.environ["MUJOCO_GL"] = "egl"
-
 import imageio
 import trimesh
 import numpy as np
@@ -623,7 +621,7 @@ class MuJoCo_RobotFK:
             xpos = xpos @ root_r.T + root_t[None]
         return xmat, xpos
 
-    def get_init_meshes(self):
+    def get_init_body_meshes(self):
         return self.body_mesh_dict.keys(), self.body_mesh_dict.values()
 
     def get_posed_meshes(self, xmat, xpos):

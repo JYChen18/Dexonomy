@@ -52,7 +52,7 @@ def read_npy_safe(params):
 
 def task_vis_usd(configs):
     kin = MuJoCo_RobotFK(configs.hand.xml_path, vis_mesh_mode=configs.task.hand.mode)
-    init_robot_name_lst, init_robot_mesh_lst = kin.get_init_meshes()
+    init_robot_name_lst, init_robot_mesh_lst = kin.get_init_body_meshes()
 
     if configs.template_name == "**":
         temp_name_lst = [

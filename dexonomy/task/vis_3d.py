@@ -114,13 +114,13 @@ def task_vis_3d(configs):
     logging.info(f"Find {len(input_path_lst)} data for {input_path_example}")
 
     kin = MuJoCo_RobotFK(configs.hand.xml_path, vis_mesh_mode=task_config.hand.mode)
-    if task_config.hand.init_mesh:
-        save_folder = os.path.join(configs.vis_3d_dir, "hand_init_mesh")
+    if task_config.hand.init_body:
+        save_folder = os.path.join(configs.vis_3d_dir, "hand_init_body_mesh")
         os.makedirs(save_folder, exist_ok=True)
-        init_mesh_name, init_mesh_lst = kin.get_init_meshes()
+        init_mesh_name, init_mesh_lst = kin.get_init_body_meshes()
         for init_name, init_mesh in zip(init_mesh_name, init_mesh_lst):
             init_mesh.export(os.path.join(save_folder, f"{init_name}.obj"))
-        logging.info(f"save hand initial mesh to {save_folder}")
+        logging.info(f"save hand initial body meshes to {save_folder}")
 
     iterable_params = [(inp, data_folder, kin, configs) for inp in input_path_lst]
 

@@ -13,7 +13,7 @@ For **any grasp type**, **any object**, and **any articulated robotic hand**, ou
 
 
 ## Installation
-```
+```bash
 git submodule update --init --recursive --progress
 
 conda create -n dexonomy python=3.10 
@@ -24,9 +24,9 @@ pip install -e .
 ```
 
 ## Run
-1. **Prepare object assets**. Download our pre-processed object assets `DGN_obj_processed.zip` and `DGN_obj_split.zip` from [here](https://huggingface.co/datasets/JiayiChenPKU/BODex) and organize the unzipped folders as below. Alternatively, new object assets can be pre-processed using [MeshProcess](https://github.com/JYChen18/MeshProcess).
+1. **Prepare object assets**. Download our pre-processed object assets `DGNv2_processed.zip` from [here](https://disk.pku.edu.cn/link/AA0FA86ED9AC5F4EC2B3BB6AF4100BEEA6) and organize the unzipped folders as below. Alternatively, new object assets can be pre-processed using [MeshProcess](https://github.com/JYChen18/MeshProcess).
 ```
-assets/object/DGN_obj
+assets/object/DGN_obj_v2
 |- processed_data
 |  |- core_bottle_1a7ba1f4c892e2da30711cdbdbc73924
 |  |_ ...

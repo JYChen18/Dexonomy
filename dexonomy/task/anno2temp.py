@@ -23,6 +23,8 @@ def _single_anno2temp(params):
     kin = MuJoCo_RobotFK(xml_path=configs.hand.xml_path)
     xmat, xpos = kin.forward_kinematics(qpos_lst)
 
+    if "contact" not in anno_data or anno_data["contact"] is None:
+        anno_data["contact"] = {}
     hand_worldframe_contact = []
     for body_name, contact_anno in anno_data["contact"].items():
         if isinstance(contact_anno, List):
@@ -55,7 +57,11 @@ def _single_anno2temp(params):
     temp_data = {
         "hand_template_name": os.path.basename(anno_path).removesuffix(".yaml"),
         "grasp_qpos": np.concatenate([np_array32([0.0, 0, 0, 1, 0, 0, 0]), qpos_lst]),
-        "hand_worldframe_contacts": np.stack(hand_worldframe_contact, axis=0),
+        "hand_worldframe_contacts": (
+            np.stack(hand_worldframe_contact, axis=0)
+            if len(hand_worldframe_contact) > 0
+            else None
+        ),
         "hand_contact_body_names": list(anno_data["contact"].keys()),
         "necessary_contact_body_names": necessary_contact_body_names,
         "evolution_num": np_array32([0.0]),
@@ -79,10 +85,14 @@ def task_anno2temp(configs):
 
     os.makedirs(configs.init_template_dir, exist_ok=True)
     hand_body_group = load_yaml(configs.hand_body_group_path)["body_group"]
-    hand_keypoint = load_yaml(configs.hand_keypoint_path)
-    for k, v in hand_keypoint.items():
-        if isinstance(v, str):
-            hand_keypoint[k] = hand_keypoint[v]
+
+    hand_keypoint = None
+    if os.path.exists(configs.hand_keypoint_path):
+        hand_keypoint = load_yaml(configs.hand_keypoint_path)
+        if hand_keypoint is not None:
+            for k, v in hand_keypoint.items():
+                if isinstance(v, str):
+                    hand_keypoint[k] = hand_keypoint[v]
 
     iterable_params = zip(
         input_path_lst,

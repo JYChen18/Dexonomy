@@ -4,7 +4,7 @@ check_success:    # True or False or None
 
 hand:
   mode: visual  # visual or collision
-  init_mesh: False
+  init_body: False
   contact: False
   skeleton: False
 
