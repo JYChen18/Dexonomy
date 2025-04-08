@@ -1,0 +1,4 @@
+<mujoco>
+<include file="../../../third_party/mujoco_menagerie/leap_hand/right_hand.xml"/>
+<compiler meshdir="simplified_visual_mesh"/>
+</mujoco>

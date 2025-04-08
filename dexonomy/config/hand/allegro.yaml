@@ -1,23 +1,4 @@
-template_path: assets/hand/allegro/templates
-xml_path: assets/hand/allegro/right.xml
-keypoints_path: assets/hand/allegro/template_keypoints.yaml
+xml_path: ${asset_root}/hand/allegro/right.xml 
 color: [0.0544794, 0.376262, 0.913099, 1.0]
-
-handframe_skeleton:
-    palm: [
-        [0, 0.0, -0.09, 0, 0.0, 0.01],
-        [0, 0.04, -0.09, 0, 0.04, 0.01],
-        [0, -0.04, -0.09, 0, -0.04, 0.01],
-    ]
-    ff_proximal: [[0., 0, 0., 0, 0, 0.05]]
-    ff_medial: [[0., 0, 0., 0, 0, 0.035]]
-    ff_distal: [[0., 0, 0., 0, 0, 0.02]]
-    mf_proximal: [[0., 0, 0., 0, 0, 0.05]]
-    mf_medial: [[0., 0, 0., 0, 0, 0.035]]
-    mf_distal: [[0., 0, 0., 0, 0, 0.02]]
-    rf_proximal: [[0., 0, 0., 0, 0, 0.05]]
-    rf_medial: [[0., 0, 0., 0, 0, 0.035]]
-    rf_distal: [[0., 0, 0., 0, 0, 0.02]]
-    th_proximal: [[0., 0, 0., 0, 0, 0.02]]
-    th_medial: [[0., 0, 0., 0, 0, 0.05]]
-    th_distal: [[0., 0, 0., 0, 0, 0.04]]
+add_mocap: True
+exclude_table_contact: 

@@ -68,8 +68,9 @@ def _single_visd(params):
             + body_xpos[:, None, :]
         )
         sk_mesh = get_line_mesh(posed_sk)
-        save_path = out_path.replace(".npy", "_sk.obj")
+        save_path = out_path.replace(".npy", "_handskeleton.obj")
         sk_mesh.export(save_path)
+        logging.info(f"save to {os.path.abspath(save_path)}")
 
     save_path = out_path.replace(".npy", "_hand.obj")
     hand_mesh.export(save_path)
@@ -120,7 +121,7 @@ def task_vis_3d(configs):
         init_mesh_name, init_mesh_lst = kin.get_init_body_meshes()
         for init_name, init_mesh in zip(init_mesh_name, init_mesh_lst):
             init_mesh.export(os.path.join(save_folder, f"{init_name}.obj"))
-        logging.info(f"save hand initial body meshes to {save_folder}")
+        logging.info(f"save hand initial body meshes to {os.path.abspath(save_folder)}")
 
     iterable_params = [(inp, data_folder, kin, configs) for inp in input_path_lst]
 

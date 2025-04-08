@@ -1,0 +1,7 @@
+body_group: [
+  [if_px, if_md, if_ds],
+  [mf_px, mf_md, mf_ds],
+  [rf_px, rf_md, rf_ds],
+  [th_px, th_md, th_ds],
+  [palm], 
+]

@@ -1,0 +1,7 @@
+body_group: [
+  [ff_proximal, ff_medial, ff_distal, ff_tip],
+  [mf_proximal, mf_medial, mf_distal, mf_tip],
+  [rf_proximal, rf_medial, rf_distal, rf_tip],
+  [th_proximal, th_medial, th_distal, th_tip],
+  [palm], 
+]

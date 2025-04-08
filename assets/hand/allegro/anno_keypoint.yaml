@@ -1,0 +1,11 @@
+ff_proximal: [[ 0.0098  ,  0.000233,  0.027353,  0.999999, -0.000967, -0.000978]]
+ff_medial: [[ 0.0098  , -0.000488,  0.017736,  1.      , -0.000657, -0.000718]]
+ff_tip: [[ 0.011979, -0.000105,  0.026362,  0.998844, -0.048051,  0.001022]]
+
+mf_proximal: ff_proximal
+mf_medial: ff_medial
+mf_tip: ff_tip
+
+rf_proximal: ff_proximal
+rf_medial: ff_medial
+rf_tip: ff_tip
