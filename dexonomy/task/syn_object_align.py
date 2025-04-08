@@ -491,9 +491,11 @@ def task_syn_obj(configs):
                             "scene_cfg": scene_cfg,
                         },
                     )
-    except Exception as e:
+    except BaseException as e:
         hand_library.stop()
         error_traceback = traceback.format_exc()
         logging.info(f"{error_traceback}")
+    finally:
+        hand_library.stop()
 
     return

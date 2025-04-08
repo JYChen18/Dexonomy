@@ -59,6 +59,20 @@ class ObjSampleDataset(Dataset):
         scene_cfg_path = self.path_lst[index]
         scene_cfg = np.load(scene_cfg_path, allow_pickle=True).item()
 
+        for obj_info in scene_cfg["scene"].values():
+            if obj_info["type"] == "rigid_mesh" and not os.path.isabs(
+                obj_info["file_path"]
+            ):
+                obj_info["file_path"] = os.path.join(
+                    os.path.dirname(scene_cfg_path), obj_info["file_path"]
+                )
+                obj_info["xml_path"] = os.path.join(
+                    os.path.dirname(scene_cfg_path), obj_info["xml_path"]
+                )
+                obj_info["urdf_path"] = os.path.join(
+                    os.path.dirname(scene_cfg_path), obj_info["urdf_path"]
+                )
+
         obj_name = scene_cfg["interest_obj_name"]
         obj_info = scene_cfg["scene"][obj_name]
         tm_obj = trimesh.load(obj_info["file_path"], force="mesh")
