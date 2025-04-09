@@ -8,7 +8,11 @@ import numpy as np
 
 from dexonomy.util.file_util import load_yaml, write_yaml
 from dexonomy.sim import MuJoCo_RobotFK
-from dexonomy.util.np_rot_util import np_transform_points, np_array32
+from dexonomy.util.np_rot_util import (
+    np_transform_points,
+    np_array32,
+    np_inv_transform_points,
+)
 
 
 def _single_anno2temp(params):
@@ -20,21 +24,53 @@ def _single_anno2temp(params):
     )
     anno_data = load_yaml(anno_path)
     qpos_lst = np_array32(anno_data["qpos"])
-    kin = MuJoCo_RobotFK(xml_path=configs.hand.xml_path)
+    kin = MuJoCo_RobotFK(xml_path=configs.hand.xml_path, vis_mesh_mode="collision")
     xmat, xpos = kin.forward_kinematics(qpos_lst)
 
     if "contact" not in anno_data or anno_data["contact"] is None:
         anno_data["contact"] = {}
     hand_worldframe_contact = []
     for body_name, contact_anno in anno_data["contact"].items():
-        if isinstance(contact_anno, List):
+        body_mesh = kin.body_mesh_dict[body_name]
+        body_id = kin.body_id_dict[body_name]
+        body_mat, body_pos = xmat[body_id], xpos[body_id]
+        if isinstance(contact_anno, List):  # Annotated directly in handframe
             assert len(contact_anno) == 6
-            hand_worldframe_contact.append(np_array32(contact_anno))
-        else:
-            hbc = hand_keypoint[body_name][contact_anno]
-            body_id = kin.body_id_dict[body_name]
-            hwc = np_transform_points(hbc, xmat[body_id], xpos[body_id])
-            hand_worldframe_contact.append(hwc)
+            hwc = np_array32(contact_anno)
+            hbc = np_inv_transform_points(hwc, body_mat, body_pos)
+        else:  # Annotated in bodyframe via keypoints
+            hbc = np_array32(hand_keypoint[body_name][contact_anno])
+            hwc = np_transform_points(hbc, body_mat, body_pos)
+
+        _, distance, _ = body_mesh.nearest.on_surface([hbc[:3]])
+        if distance > 0.002:
+            min_body_name = body_name
+            min_point2mesh_dist = distance
+            for bn, bm in kin.body_mesh_dict.items():
+                new_body_id = kin.body_id_dict[bn]
+                new_body_mat, new_body_pos = xmat[new_body_id], xpos[new_body_id]
+                new_hbc = np_inv_transform_points(hwc, new_body_mat, new_body_pos)
+                _, new_dist, _ = bm.nearest.on_surface([new_hbc[:3]])
+                if new_dist < min_point2mesh_dist:
+                    min_point2mesh_dist = new_dist
+                    min_body_name = bn
+            if min_point2mesh_dist > 0.002:
+                error_str = (
+                    "The annotated contact point is far from the collision mesh!\n"
+                )
+            else:
+                error_str = "The annotated contact point seems to be inconsistent with the body name!\n"
+            error_str += " " * 10 + f"Template path: {anno_path}\n"
+            error_str += (
+                " " * 10
+                + f"Annotated body name: {body_name}, Point2body distance: {distance};\n"
+            )
+            error_str += (
+                " " * 10
+                + f"Nearest body name: {min_body_name}, Point2body distance: {min_point2mesh_dist}.\n"
+            )
+            logging.error(error_str)
+        hand_worldframe_contact.append(hwc)
 
     if "necessary_contact_body_names" not in anno_data:
         necessary_contact_body_names = []
