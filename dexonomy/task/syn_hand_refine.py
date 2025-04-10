@@ -138,6 +138,7 @@ def _single_hand_refine(params):
                 configs.init_dir, configs.debug_dir
             ).replace(".npy", ".gif")
         )
+        logging.debug(f"Fail: {input_npy_path}")
         return input_npy_path
 
     hand_point = np.array([c["contact_pos"] for c in ho_contact_lst])
@@ -157,6 +158,7 @@ def _single_hand_refine(params):
                 configs.init_dir, configs.debug_dir
             ).replace(".npy", ".gif")
         )
+        logging.debug(f"Fail: {input_npy_path}")
         return input_npy_path
 
     grasp_data["squeeze_qpos"] = np_array32(
@@ -174,7 +176,7 @@ def _single_hand_refine(params):
         )
     elif configs.update_template == "arbi":
         hand_worldframe_contacts = np.concatenate([hand_point, hand_normal], axis=-1)
-        hand_contact_body_names = hand_body
+        grasp_data["hand_contact_body_names"] = hand_body
     elif configs.update_template == "nearest" or configs.update_template == False:
         hand_worldframe_contacts = sim_env.get_hand_worldframe_contact(
             hand_contact_body_names, hand_bodyframe_contact
@@ -197,12 +199,13 @@ def _single_hand_refine(params):
             f"Undefined update_template strategy: {configs.update_template}. Available choices: [False, 'nearest', 'body', 'arbi']"
         )
     grasp_data["hand_worldframe_contacts"] = hand_worldframe_contacts
-    grasp_data["hand_contact_body_names"] = hand_contact_body_names
 
     if task_config.pregrasp:
-        sim_env.set_rigid_object_margin(task_config.pregrasp.ho_target_dist)
-
         for ii in range(task_config.pregrasp.outer_iter):
+            sim_env.set_rigid_object_margin(
+                task_config.pregrasp.ho_target_dist
+                * min((ii + 1) / task_config.pregrasp.outer_iter * 2, 1)
+            )
             sim_env.keep_hand_stable()
             sim_env.control_hand_step(task_config.grasp.inner_iter)
 
@@ -224,6 +227,7 @@ def _single_hand_refine(params):
                     configs.init_dir, configs.debug_dir
                 ).replace(".npy", ".gif")
             )
+            logging.debug(f"Fail: {input_npy_path}")
             return input_npy_path
 
         grasp_data["pregrasp_qpos"] = np_array32(sim_env.get_hand_qpos())

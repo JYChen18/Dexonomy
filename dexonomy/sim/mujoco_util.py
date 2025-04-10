@@ -412,7 +412,16 @@ class MuJoCo_OptEnv(MuJoCo_BaseEnv):
             hcp_world = br @ hand_bodyframe_contact[i, :3] + bp
             ocp_world = obj_worldframe_contact[i, :3]
             total_loss.append(np.linalg.norm(ocp_world - hcp_world))
-            point_force = (ocp_world - hcp_world) * 500
+            delta_normal = (
+                np.sum(
+                    (ocp_world - hcp_world) * obj_worldframe_contact[i, 3:],
+                    axis=-1,
+                    keepdims=True,
+                )
+                * obj_worldframe_contact[i, 3:]
+            )
+            delta_tangent = ocp_world - hcp_world - delta_normal
+            point_force = delta_normal * 500 + delta_tangent * 100
             mujoco.mj_applyFT(
                 self.model,
                 self.data,
