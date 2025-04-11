@@ -131,7 +131,7 @@ def task_syn_test(configs):
         return
 
     iterable_params = zip(input_path_lst, [configs] * len(input_path_lst))
-    if configs.debug or configs.debug_viewer:
+    if configs.n_worker == 1 or configs.debug_viewer:
         for ip in iterable_params:
             _single_validation(ip)
     else:

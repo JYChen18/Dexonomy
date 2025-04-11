@@ -7,3 +7,4 @@ __pycache__/
 debug*
 output/
 assets/object
+MUJOCO_LOG.TXT

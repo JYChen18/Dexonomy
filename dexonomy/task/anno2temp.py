@@ -136,7 +136,7 @@ def task_anno2temp(configs):
         [hand_body_group] * input_num,
         [configs] * input_num,
     )
-    if configs.debug:
+    if configs.n_worker == 1:
         for ip in iterable_params:
             _single_anno2temp(ip)
     else:

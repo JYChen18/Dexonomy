@@ -235,11 +235,15 @@ class ObjectAligner:
                 self.fps_filter["max_num"],
                 self.fps_filter["min_dist"],
             )
-            for k, v in result_dict.items():
-                result_dict[k] = v[fps_valid_idx]
-            logging.debug(
-                f"FPS filtering remain {fps_valid_idx.sum()} out of {remain_number}"
-            )
+        else:
+            fps_valid_idx = torch.randperm(len(result_dict["parallel_id_lst"]))[
+                : self.fps_filter["max_num"]
+            ]
+        for k, v in result_dict.items():
+            result_dict[k] = v[fps_valid_idx]
+        logging.debug(
+            f"FPS filtering remain {fps_valid_idx.sum()} out of {remain_number}"
+        )
 
         for k, v in result_dict.items():
             result_dict[k] = v.detach().cpu().numpy()
@@ -473,7 +477,7 @@ def task_syn_obj(configs):
 
                     obj_worldframe_contacts = np.concatenate([obj_cp, -obj_cn], axis=-1)
                     np.save(
-                        f"{grasp_dir}/{eee}_{count}.npy",
+                        f"{grasp_dir}/{eee}_{count}_grasp.npy",
                         {
                             "evolution_num": np_array32([hand_evolution_num]),
                             "hand_type": configs.hand_name,

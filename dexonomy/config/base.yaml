@@ -6,7 +6,6 @@ skip: True
 n_worker: 16    
 gpu_list: [1,2,3]  # only used for CSample
 
-debug: False
 debug_viewer: False
 debug_render: False
 template_name: "**"
@@ -21,7 +20,7 @@ max_template_buffer: 1024
 
 # Path for hand annotation
 raw_anno_dir: ${asset_root}/hand/${hand_name}/raw_anno
-init_template_dir: ${asset_root}/hand/${hand_name}/template
+init_template_dir: ${asset_root}/hand/${hand_name}/init_template
 hand_skeleton_path: ${asset_root}/hand/${hand_name}/collision_skeleton.yaml
 hand_keypoint_path: ${asset_root}/hand/${hand_name}/anno_keypoint.yaml
 hand_body_group_path: ${asset_root}/hand/${hand_name}/body_group.yaml
@@ -30,7 +29,7 @@ hand_body_group_path: ${asset_root}/hand/${hand_name}/body_group.yaml
 init_dir: ${save_dir}/initialization
 grasp_dir: ${save_dir}/graspdata
 succ_dir: ${save_dir}/succgrasp
-new_template_dir: ${save_dir}/template
+new_template_dir: ${save_dir}/new_template
 vis_3d_dir: ${save_dir}/vis_3d
 vis_usd_dir: ${save_dir}/vis_usd
 debug_dir: ${save_dir}/debug

@@ -67,40 +67,29 @@ def task_vis_usd(configs):
         usd_helper = UsdHelper()
 
         task_config = configs.task
-        if task_config.data_type == "init_template":
-            data_folder = configs.init_template_dir
-            input_path_example = os.path.join(data_folder, temp_name + ".npy")
-            input_path_lst = glob(input_path_example)
+        if task_config.data_type == "grasp":
+            data_folder, check_folder = configs.grasp_dir, configs.succ_dir
+        elif task_config.data_type == "init":
+            data_folder, check_folder = configs.init_dir, configs.grasp_dir
+        elif task_config.data_type == "succ":
+            data_folder, check_folder = configs.succ_dir, None
+        elif task_config.data_type == "new_template":
+            data_folder, check_folder = configs.new_template_dir, None
         else:
-            if task_config.data_type == "grasp":
-                data_folder, check_folder = configs.grasp_dir, configs.succ_dir
-            elif task_config.data_type == "init":
-                data_folder, check_folder = configs.init_dir, configs.grasp_dir
-            elif task_config.data_type == "succ":
-                data_folder, check_folder = configs.succ_dir, None
-            elif task_config.data_type == "new_template":
-                data_folder, check_folder = configs.new_template_dir, None
-            else:
-                raise NotImplementedError
-            input_path_example = os.path.join(
-                data_folder,
-                temp_name,
-                configs.obj_name,
-                configs.data_name + ".npy",
-            )
-            input_path_lst = glob(input_path_example)
-            if check_folder is not None and task_config.check_success is not None:
-                check_path_lst = glob(
-                    input_path_example.replace(data_folder, check_folder)
-                )
-                if task_config.check_success:
-                    input_path_lst = list(
-                        set(input_path_lst).difference(check_path_lst)
-                    )
-                elif not task_config.check_success:
-                    input_path_lst = list(
-                        set(input_path_lst).intersection(check_path_lst)
-                    )
+            raise NotImplementedError
+        input_path_example = os.path.join(
+            data_folder,
+            temp_name,
+            configs.obj_name,
+            configs.data_name + ".npy",
+        )
+        input_path_lst = glob(input_path_example)
+        if check_folder is not None and task_config.check_success is not None:
+            check_path_lst = glob(input_path_example.replace(data_folder, check_folder))
+            if task_config.check_success:
+                input_path_lst = list(set(input_path_lst).difference(check_path_lst))
+            elif not task_config.check_success:
+                input_path_lst = list(set(input_path_lst).intersection(check_path_lst))
 
         if len(input_path_lst) == 0:
             continue

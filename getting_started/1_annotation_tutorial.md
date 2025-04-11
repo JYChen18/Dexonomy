@@ -114,7 +114,7 @@ To visualize the annotated contacts:
 python -m dexonomy.main hand=new_hand task=anno2temp
 python -m dexonomy.main hand=new_hand task=vis_3d task.data_type=init_template task.hand.contact=True
 ```
-
+`anno2temp` will also automatically check for mismatches between annotated contact points and body names — a common issue in practice.
 
 ## File 6: Hand Skeleton
 

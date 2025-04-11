@@ -270,7 +270,7 @@ def task_syn_hand(configs):
     logging.info(f"Find {len(input_path_lst)} initialization")
 
     iterable_params = zip(input_path_lst, [configs] * len(input_path_lst))
-    if configs.debug or configs.debug_viewer:
+    if configs.n_worker == 1 or configs.debug_viewer:
         for ip in iterable_params:
             _single_hand_refine(ip)
     else:
