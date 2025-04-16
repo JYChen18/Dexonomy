@@ -391,11 +391,7 @@ def task_syn_obj(configs):
             skeleton_path=configs.hand_skeleton_path,
             template_name=configs.template_name,
             init_template_dir=configs.init_template_dir,
-            new_template_dir=(
-                configs.new_template_dir
-                if configs.update_template is not False
-                else None
-            ),
+            new_template_dir=configs.new_template_dir,
             max_data_buffer=configs.max_template_buffer,
             num_workers=configs.n_worker,
         )
@@ -446,7 +442,7 @@ def task_syn_obj(configs):
                 if succ_num == 0:
                     continue
 
-                for (
+                for count, (
                     grasp_pose,
                     grasp_qpos,
                     hand_c,
@@ -455,15 +451,17 @@ def task_syn_obj(configs):
                     obj_cn,
                     obj_id,
                     obj_gc,
-                ) in zip(
-                    result_dict["grasp_pose"],
-                    result_dict["grasp_qpos"],
-                    result_dict["hand_contacts"],
-                    result_dict["hand_evolution_num"],
-                    result_dict["obj_cp"],
-                    result_dict["obj_cn"],
-                    result_dict["parallel_id_lst"],
-                    result_dict["obj_gc"],
+                ) in enumerate(
+                    zip(
+                        result_dict["grasp_pose"],
+                        result_dict["grasp_qpos"],
+                        result_dict["hand_contacts"],
+                        result_dict["hand_evolution_num"],
+                        result_dict["obj_cp"],
+                        result_dict["obj_cn"],
+                        result_dict["parallel_id_lst"],
+                        result_dict["obj_gc"],
+                    )
                 ):
 
                     scene_cfg = obj_samples["scene_cfg"][obj_id]
@@ -473,7 +471,6 @@ def task_syn_obj(configs):
                         scene_cfg["scene_id"],
                     )
                     os.makedirs(grasp_dir, exist_ok=True)
-                    count = len(os.listdir(grasp_dir)) + 1
 
                     obj_worldframe_contacts = np.concatenate([obj_cp, -obj_cn], axis=-1)
                     np.save(

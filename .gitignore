@@ -5,6 +5,6 @@ __pycache__/
 *.npy
 
 debug*
-output/
+output*
 assets/object
 MUJOCO_LOG.TXT
