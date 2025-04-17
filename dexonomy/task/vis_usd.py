@@ -107,8 +107,8 @@ def task_vis_usd(configs):
             result_iter = [r for r in list(result_iter) if r is not None]
 
         scene_dict = {}
-        for r in result_iter:
-            scene_id = r["scene_cfg"]["scene_id"]
+        for i, r in enumerate(result_iter):
+            scene_id = r["scene_cfg"]["scene_id"] + f"_{i}"
             if scene_id not in scene_dict:
                 scene_dict[scene_id] = []
             scene_dict[scene_id].append(r)

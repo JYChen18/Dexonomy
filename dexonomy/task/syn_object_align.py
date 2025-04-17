@@ -68,7 +68,8 @@ class ObjectAligner:
         hand_evolution_num,
         sampled_rot,
         sampled_trans,
-        obj_scale,
+        sampled_scale,
+        scale_range,
         wf_sof_pose,
         wf_ogc,
         wf_ogd,
@@ -81,13 +82,19 @@ class ObjectAligner:
         opt_q.requires_grad_()
         opt_t = sampled_trans
         opt_t.requires_grad_()
+        opt_s = sampled_scale
+        opt_s.requires_grad_()
+
         optimizer = torch.optim.Adam(
-            [{"params": opt_q, "lr": 1e-2}, {"params": opt_t, "lr": 1e-2}]
+            [
+                {"params": opt_q, "lr": 1e-2},
+                {"params": opt_t, "lr": 1e-2},
+                {"params": opt_s, "lr": 1e-3},
+            ]
         )
 
         b, h = opt_t.shape[:-1]
         n_points = nf_hc.shape[-2]
-        obj_scale = obj_scale.view(b, 1, 1, 3)
 
         if self.buffer_shape != torch.Size([b, h, n_points]):
             self.out_points = torch.zeros([b, h, n_points, 3], device=self.device)
@@ -99,7 +106,7 @@ class ObjectAligner:
             optimizer.zero_grad()
             opt_r = torch_quaternion_to_matrix(opt_q)
             of_hc = torch_transform_points(
-                nf_hc, opt_r, opt_t.view(b, h, 1, 3), 1 / obj_scale
+                nf_hc, opt_r, opt_t.view(b, h, 1, 3), 1 / opt_s.view(b, h, 1, 1)
             )
 
             of_op, of_on = MeshQueryPoint.apply(
@@ -110,7 +117,7 @@ class ObjectAligner:
                 collision_mesh_id,
             )
 
-            loss_dist = ((obj_scale * (of_op - of_hc[..., :3])) ** 2).sum(
+            loss_dist = ((opt_s.view(b, h, 1, 1) * (of_op - of_hc[..., :3])) ** 2).sum(
                 dim=-1
             )  # [b,h,n]
             loss_normal = ((of_on - of_hc[..., 3:]) ** 2).sum(dim=-1)  # [b,h,n]
@@ -120,6 +127,8 @@ class ObjectAligner:
 
             loss.backward()
             optimizer.step()
+            with torch.no_grad():
+                opt_s.clamp_(min=scale_range[0], max=scale_range[1])
 
         with torch.no_grad():
             if self.loss_filter.enable:
@@ -142,7 +151,7 @@ class ObjectAligner:
 
             sof_nf_quat = torch_normalize_vector(opt_q)
             sof_nf_rot = torch_quaternion_to_matrix(sof_nf_quat)
-            sof_nf_trans = opt_t.view(b, h, 1, 3) * obj_scale
+            sof_nf_trans = opt_t.view(b, h, 1, 3) * opt_s.view(b, h, 1, 1)
 
             wf_sof_rot = torch_quaternion_to_matrix(wf_sof_pose[..., 3:]).view(
                 b, 1, 3, 3
@@ -153,8 +162,12 @@ class ObjectAligner:
                 wf_sof_rot, wf_sof_trans, sof_nf_rot, sof_nf_trans
             )
 
-            wf_hc = torch_transform_points(of_hc, wf_sof_rot, wf_sof_trans, obj_scale)
-            wf_op = torch_transform_points(of_op, wf_sof_rot, wf_sof_trans, obj_scale)
+            wf_hc = torch_transform_points(
+                of_hc, wf_sof_rot, wf_sof_trans, opt_s.view(b, h, 1, 1)
+            )
+            wf_op = torch_transform_points(
+                of_op, wf_sof_rot, wf_sof_trans, opt_s.view(b, h, 1, 1)
+            )
             wf_on = torch_transform_points(of_on, wf_sof_rot)
 
             wf_hf_rot, wf_hf_trans = torch_pose_multiply(
@@ -174,9 +187,7 @@ class ObjectAligner:
                 "hand_evolution_num": hand_evolution_num.view(b * h)[loss_valid_idx],
                 "obj_cp": wf_op.view(b * h, -1, 3)[loss_valid_idx],
                 "obj_cn": wf_on.view(b * h, -1, 3)[loss_valid_idx],
-                "obj_scale": obj_scale.repeat(1, h, 1, 1).view(b * h, 3)[
-                    loss_valid_idx
-                ],
+                "obj_scale": opt_s.view(b * h, 1)[loss_valid_idx],
                 "collision_mesh_id": collision_mesh_id[parallel_id_lst],
                 "parallel_id_lst": parallel_id_lst,
                 "obj_pose": wf_sof_pose.repeat_interleave(h, dim=0)[loss_valid_idx],
@@ -284,7 +295,7 @@ class ObjectAligner:
             wf_hsk,
             torch_quaternion_to_matrix(obj_pose[..., 3:]),
             obj_pose[..., :3].view(-1, 1, 3),
-            obj_scale.view(-1, 1, 3),
+            obj_scale.view(-1, 1, 1),
         )
         out_valid_idx = MeshLineSegCollision(
             of_hsk, collision_mesh_id, self.coll_buf[:query_shape]
@@ -328,6 +339,16 @@ class ObjectAligner:
                     gravity_center[i].cpu().numpy(),
                 )
 
+        # from dexonomy.util.vis_util import get_arrow_mesh
+        # import trimesh
+
+        # pm, am = get_arrow_mesh(
+        #     obj_points[-1].cpu().numpy(), obj_normals[-1].cpu().numpy()
+        # )
+        # trimesh.util.concatenate([pm, am]).export("debug.obj")
+        # import pdb
+
+        # pdb.set_trace()
         out_valid_idx = qp_error < self.qp_filter["threshold"]
         return out_valid_idx
 
@@ -425,7 +446,8 @@ def task_syn_obj(configs):
                     hand_temp_dict["evolution_num"],
                     obj_samples["sampled_rot"],
                     obj_samples["sampled_trans"],
-                    obj_samples["obj_scale"],
+                    obj_samples["sampled_scale"],
+                    task_config.object.scale_range,
                     obj_samples["wf_sof_pose"],
                     obj_samples["wf_ogc"],
                     obj_samples["wf_ogd"],
@@ -449,6 +471,7 @@ def task_syn_obj(configs):
                     hand_evolution_num,
                     obj_cp,
                     obj_cn,
+                    obj_scale,
                     obj_id,
                     obj_gc,
                 ) in enumerate(
@@ -459,12 +482,16 @@ def task_syn_obj(configs):
                         result_dict["hand_evolution_num"],
                         result_dict["obj_cp"],
                         result_dict["obj_cn"],
+                        result_dict["obj_scale"],
                         result_dict["parallel_id_lst"],
                         result_dict["obj_gc"],
                     )
                 ):
 
                     scene_cfg = obj_samples["scene_cfg"][obj_id]
+                    scene_cfg["scene"][scene_cfg["interest_obj_name"]]["scale"] = (
+                        np_array32([obj_scale[0], obj_scale[0], obj_scale[0]])
+                    )
                     grasp_dir = os.path.join(
                         configs.init_dir,
                         hand_temp_dict["hand_template_name"],
