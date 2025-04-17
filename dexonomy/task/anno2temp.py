@@ -29,8 +29,27 @@ def _single_anno2temp(params):
 
     if "contact" not in anno_data or anno_data["contact"] is None:
         anno_data["contact"] = {}
-    hand_worldframe_contact = []
+
+    # Convert dict to list
+    contact_lst = []
     for body_name, contact_anno in anno_data["contact"].items():
+        if isinstance(contact_anno, List):
+            # Judge whether it is a list of points or a single point list
+            if (
+                len(contact_anno) == 6
+                and sum([isinstance(c, float) for c in contact_anno]) > 0
+            ):
+                contact_lst.append((body_name, contact_anno))
+            else:
+                for c in contact_anno:
+                    contact_lst.append((body_name, c))
+        else:
+            contact_lst.append((body_name, contact_anno))
+
+    # Process contact list
+    hand_worldframe_contact = []
+    hand_contact_body_names = []
+    for body_name, contact_anno in contact_lst:
         body_mesh = kin.body_mesh_dict[body_name]
         body_id = kin.body_id_dict[body_name]
         body_mat, body_pos = xmat[body_id], xpos[body_id]
@@ -71,6 +90,7 @@ def _single_anno2temp(params):
             )
             logging.error(error_str)
         hand_worldframe_contact.append(hwc)
+        hand_contact_body_names.append(body_name)
 
     if "necessary_contact_body_names" not in anno_data:
         necessary_contact_body_names = []
@@ -98,7 +118,7 @@ def _single_anno2temp(params):
             if len(hand_worldframe_contact) > 0
             else None
         ),
-        "hand_contact_body_names": list(anno_data["contact"].keys()),
+        "hand_contact_body_names": hand_contact_body_names,
         "necessary_contact_body_names": necessary_contact_body_names,
         "evolution_num": np_array32([0.0]),
     }
