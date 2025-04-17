@@ -6,6 +6,8 @@ import os
 import warp as wp
 import logging
 import traceback
+from torch.cuda import OutOfMemoryError
+from glob import glob 
 
 from dexonomy.util.warp_util import MeshQueryPoint, MeshLineSegCollision
 from dexonomy.util.np_rot_util import np_array32
@@ -321,7 +323,7 @@ class ObjectAligner:
             for i in range(batch_num):
                 start = i * max_batch_size
                 end = min((i + 1) * max_batch_size, obj_points.shape[0])
-
+                logging.info(f"{start}, {end}, {qp_error.shape} {obj_points.shape} {gravity_center.shape} {gravity.shape}")
                 _, qp_error[start:end] = get_qp_error_batched(
                     obj_points[start:end],
                     obj_normals[start:end],
@@ -329,6 +331,7 @@ class ObjectAligner:
                     gravity_center[start:end],
                     miu_coef,
                 )
+                logging.info(f"{qp_error.mean()}")
         else:
             single_solver = ContactQP(miu_coef)
             for i in range(obj_points.shape[0]):
@@ -420,6 +423,22 @@ def task_syn_obj(configs):
         for eee in range(task_config.epoch):
             logging.info(f"Epoch {eee}")
             for obj_samples in obj_loader:
+                # Check exist path
+                continue_flag = False
+                for scene_cfg in obj_samples["scene_cfg"]:
+                    check_dir = os.path.join(
+                        configs.init_dir,
+                        configs.template_name,
+                        scene_cfg["scene_id"].split("_scale")[0],
+                        f"{eee}**.npy"
+                    )
+                    if len(glob(check_dir)) > 0:
+                        continue_flag = True
+                        break
+                if continue_flag:
+                    logging.info('skip')
+                    continue
+                
                 obj_samples = {
                     k: (
                         v.to(task_config.device, non_blocking=True)
@@ -495,7 +514,7 @@ def task_syn_obj(configs):
                     grasp_dir = os.path.join(
                         configs.init_dir,
                         hand_temp_dict["hand_template_name"],
-                        scene_cfg["scene_id"],
+                        scene_cfg["scene_id"].split("_scale")[0],
                     )
                     os.makedirs(grasp_dir, exist_ok=True)
 
@@ -519,6 +538,7 @@ def task_syn_obj(configs):
                             "scene_cfg": scene_cfg,
                         },
                     )
+        logging.info("Finish task syn_obj.")
     except BaseException as e:
         hand_library.stop()
         error_traceback = traceback.format_exc()

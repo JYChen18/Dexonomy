@@ -54,7 +54,7 @@ class ObjSampleDataset(Dataset):
         self.init_point_num = init_point_num
         self.init_inplane_num = init_inplane_num
         self.scale_range = scale_range
-        self.path_lst = glob(cfg_path)
+        self.path_lst = np.random.permutation(sorted(glob(cfg_path)))
         if cfg_num is not None and cfg_num > 0:
             self.path_lst = self.path_lst[:cfg_num]
 
