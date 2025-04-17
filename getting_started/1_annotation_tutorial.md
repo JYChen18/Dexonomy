@@ -116,6 +116,16 @@ python -m dexonomy.main hand=new_hand task=vis_3d task.data_type=init_template t
 ```
 `anno2temp` will also automatically check for mismatches between annotated contact points and body names — a common issue in practice.
 
+**Important Notes:**
+- YAML files do not support duplicated keys. Therefore, if a link has multiple contact points, annotate them using a list format:
+```yaml
+contact:
+    rh_thdistal: 
+      - [0.034434,-0.086055,0.106385,0.425640,0.311104,0.849732]  # Option A
+      - 0   # Option B
+      - 1   # Option B
+```
+
 ## File 6: Hand Skeleton
 
 ![alt text](../img/tutorial_hand_skeleton.png)

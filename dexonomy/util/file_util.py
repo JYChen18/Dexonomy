@@ -1,7 +1,9 @@
 from typing import Dict, Union
 import json
-import yaml
-from yaml import Loader
+from ruamel.yaml import YAML
+
+YAML_LOADER = YAML()
+YAML_LOADER.allow_duplicate_keys = False
 
 
 def load_yaml(file_path: Union[str, Dict]) -> Dict:
@@ -15,7 +17,7 @@ def load_yaml(file_path: Union[str, Dict]) -> Dict:
     """
     if isinstance(file_path, str):
         with open(file_path) as file_p:
-            yaml_params = yaml.load(file_p, Loader=Loader)
+            yaml_params = YAML_LOADER.load(file_p)
     else:
         yaml_params = file_path
     return yaml_params

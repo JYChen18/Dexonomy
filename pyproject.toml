@@ -12,13 +12,13 @@ dependencies = [
     "warp-lang==1.6.2",
     "mujoco==3.2.6",
     "trimesh[easy]==4.5.3",
-    "matplotlib",
-    "imageio",
-    "pyyaml",
-    "qpsolvers[clarabel]",
-    "transforms3d",
-    "hydra-core",
-    "usd-core",
+    "matplotlib==3.8.0",
+    "imageio==2.37.0",
+    "qpsolvers[clarabel]==4.5.0",
+    "transforms3d==0.4.2",
+    "hydra-core==1.3.2",
+    "usd-core==25.2",
+    "ruamel.yaml==0.18.10",
 ]
 
 [project.optional-dependencies]
