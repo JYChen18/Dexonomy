@@ -1,0 +1,15 @@
+right_hand_palm_link: [
+  [0,0,0,0.1,0,0],
+  [0,0,0.02,0.1,0,0.02],
+  [0,0,-0.02,0.1,0,-0.02],
+  [0.04,0,-0.02,0.04,0,0.02],
+  [0.08,0,-0.02,0.08,0,0.02]
+]
+
+right_hand_index_0_link: [[0., 0, 0., 0.04, 0, 0]]
+right_hand_index_1_link: [[0., 0, 0., 0.04, 0, 0]]
+right_hand_middle_0_link: [[0., 0, 0., 0.04, 0, 0]]
+right_hand_middle_1_link: [[0., 0, 0., 0.04, 0, 0]]
+right_hand_thumb_0_link: [[0., 0, 0., 0, 0, 0]]
+right_hand_thumb_1_link: [[0., -0.02, 0., 0, 0.04, 0]]
+right_hand_thumb_2_link: [[0., 0, 0., 0, 0.04, 0]]

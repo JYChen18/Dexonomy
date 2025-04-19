@@ -1,0 +1,8 @@
+body_group: [
+    [index1y,index1x,index2,index3],
+    [middle1y,middle1x,middle2,middle3],
+    [pinky1y,pinky1x,pinky2,pinky3],
+    [ring1y,ring1x,ring2,ring3],
+    [thumb1y,thumb1z,thumb2,thumb3],
+    [rh_palm]
+]

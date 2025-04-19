@@ -113,7 +113,7 @@ def task_vis_usd(configs):
                 scene_dict[scene_id] = []
             scene_dict[scene_id].append(r)
 
-        data_length = len(configs.task.data_type)
+        data_length = len(configs.task.qpos_type)
 
         hand_pose_scale_lst = np.ones(
             (
