@@ -6,6 +6,63 @@ https://github.com/facebookresearch/pytorch3d/tree/main
 """
 
 import torch
+import torch.nn.functional as F
+
+
+def se3_angle_distance(T1, T2):
+    """
+    Compute angular distance between two SE(3) transformations using:
+    - Rotation angle (geodesic distance in SO(3))
+    - Translation angle (angle between vectors)
+
+    Args:
+        T1: [..., 7] (translation first 3, quaternion last 4)
+        T2: [..., 7] (same structure)
+
+    Returns:
+        rotation_angle: [...,] in radians
+        translation_angle: [...,] in radians (range [0, π])
+    """
+    assert T1.shape[-1] == 8 and T2.shape[-1] == 8
+
+    # Extract components
+    t1, t2 = T1[..., :3], T2[..., :3]  # [..., 3]
+    q1, q2 = F.normalize(T1[..., 3:7], dim=-1), F.normalize(
+        T2[..., 3:7], dim=-1
+    )  # [..., 4]
+    s1, s2 = T1[..., -1], T2[..., -1]
+
+    # ---- Rotation angle (SO3 geodesic distance) ----
+    q1_inv = quaternion_inverse(q1)
+    q_diff = quaternion_multiply(q1_inv, q2)
+    rotation_angle = 2 * torch.atan2(
+        torch.norm(q_diff[..., 1:], dim=-1), torch.abs(q_diff[..., 0])
+    )  # [...,]
+
+    translation_angle = (t1 - t2).norm(dim=-1) * 100
+    scale_diff = (s1 - s2).abs()
+    scale_diff = torch.where(scale_diff > 0.075, 0.15 - scale_diff, scale_diff) * 100
+    return rotation_angle + translation_angle + scale_diff
+
+
+def quaternion_inverse(q):
+    """Inverse of quaternion [..., 4]"""
+    return q * torch.tensor([1, -1, -1, -1], dtype=q.dtype, device=q.device)
+
+
+def quaternion_multiply(q1, q2):
+    """Hamilton product [..., 4]"""
+    a1, b1, c1, d1 = q1.unbind(-1)
+    a2, b2, c2, d2 = q2.unbind(-1)
+    return torch.stack(
+        [
+            a1 * a2 - b1 * b2 - c1 * c2 - d1 * d2,
+            a1 * b2 + b1 * a2 + c1 * d2 - d1 * c2,
+            a1 * c2 - b1 * d2 + c1 * a2 + d1 * b2,
+            a1 * d2 + b1 * c2 - c1 * b2 + d1 * a2,
+        ],
+        dim=-1,
+    )
 
 
 def torch_normalize_vector(v: torch.Tensor):
