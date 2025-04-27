@@ -6,8 +6,7 @@ import os
 import warp as wp
 import logging
 import traceback
-from torch.cuda import OutOfMemoryError
-from glob import glob 
+from glob import glob
 
 from dexonomy.util.warp_util import MeshQueryPoint, MeshLineSegCollision
 from dexonomy.util.np_rot_util import np_array32
@@ -18,6 +17,7 @@ from dexonomy.util.torch_rot_util import (
     torch_normalize_vector,
     torch_pose_multiply,
     torch_inv_transform_points,
+    se3_angle_distance,
 )
 from dexonomy.data.obj_loader import get_object_dataloader
 from dexonomy.data.hand_loader import HandTemplateLibrary
@@ -84,7 +84,7 @@ class ObjectAligner:
         opt_q.requires_grad_()
         opt_t = sampled_trans
         opt_t.requires_grad_()
-        opt_s = sampled_scale
+        opt_s = sampled_scale.clone()
         opt_s.requires_grad_()
 
         optimizer = torch.optim.Adam(
@@ -123,7 +123,13 @@ class ObjectAligner:
                 dim=-1
             )  # [b,h,n]
             loss_normal = ((of_on - of_hc[..., 3:]) ** 2).sum(dim=-1)  # [b,h,n]
-            loss = (1000 * loss_dist + loss_normal).mean(dim=-1).mean(dim=-1).sum()
+            loss_penalty = ((sampled_scale - opt_s) ** 2).view(b, h, 1)
+            loss = (
+                (1000 * loss_dist + loss_normal + 100 * loss_penalty)
+                .mean(dim=-1)
+                .mean(dim=-1)
+                .sum()
+            )
             if i == self.opt_iter - 1:
                 break
 
@@ -242,8 +248,10 @@ class ObjectAligner:
 
         if self.fps_filter["enable"]:
             fps_valid_idx = self.fps_based_filter(
-                result_dict["obj_cp"],
-                result_dict["obj_pose"],
+                result_dict["grasp_pose"],
+                # result_dict["obj_cp"],
+                # result_dict["obj_pose"],
+                result_dict["obj_scale"],
                 result_dict["parallel_id_lst"],
                 self.fps_filter["max_num"],
                 self.fps_filter["min_dist"],
@@ -323,7 +331,6 @@ class ObjectAligner:
             for i in range(batch_num):
                 start = i * max_batch_size
                 end = min((i + 1) * max_batch_size, obj_points.shape[0])
-                logging.info(f"{start}, {end}, {qp_error.shape} {obj_points.shape} {gravity_center.shape} {gravity.shape}")
                 _, qp_error[start:end] = get_qp_error_batched(
                     obj_points[start:end],
                     obj_normals[start:end],
@@ -331,7 +338,6 @@ class ObjectAligner:
                     gravity_center[start:end],
                     miu_coef,
                 )
-                logging.info(f"{qp_error.mean()}")
         else:
             single_solver = ContactQP(miu_coef)
             for i in range(obj_points.shape[0]):
@@ -357,42 +363,34 @@ class ObjectAligner:
 
     @torch.no_grad()
     def fps_based_filter(
-        self, obj_points, obj_pose, parallel_id_lst, max_num, min_dist
+        self, hand_pose, obj_scale, parallel_id_lst, max_num, min_dist
     ):
-        of_op = torch_inv_transform_points(
-            obj_points,
-            torch_quaternion_to_matrix(obj_pose[..., 3:]),
-            obj_pose[..., :3].view(-1, 1, 3),
-        )
-        out_valid_idx = torch.zeros(of_op.shape[0], device=self.device).bool()
+        out_valid_idx = torch.zeros(hand_pose.shape[0], device=self.device).bool()
         of_single_op = {}
         corr_index = {}
         for i in range(parallel_id_lst.shape[0]):
             oi = str(parallel_id_lst[i].data.item())
             if oi not in of_single_op.keys():
-                of_single_op[oi] = [of_op[i]]
+                of_single_op[oi] = [torch.cat([hand_pose[i], obj_scale[i]])]
                 corr_index[oi] = [i]
             else:
-                of_single_op[oi].append(of_op[i])
+                of_single_op[oi].append(torch.cat([hand_pose[i], obj_scale[i]]))
                 corr_index[oi].append(i)
 
-        bh, n_points, _ = obj_points.shape
         for k, v in of_single_op.items():
             all_points = torch.stack(v, dim=0)
 
             rand_start = random.randint(0, all_points.shape[0] - 1)
             valid_points = all_points[rand_start].unsqueeze(0)
             out_valid_idx[corr_index[k][rand_start]] = True
+
             for i in range(min(len(all_points), max_num - 1)):
-                farthest_dist, farthest_id = (
-                    (valid_points.unsqueeze(0) - all_points.unsqueeze(1))
-                    .norm(dim=-1)
-                    .mean(dim=-1)
-                    .min(dim=-1)[0]
-                    .max(dim=-1)
-                )
-                if farthest_dist < min_dist:
-                    break
+                rts_dist = se3_angle_distance(
+                    valid_points.unsqueeze(0), all_points.unsqueeze(1)
+                ).min(dim=-1)[0]
+                farthest_dist, farthest_id = rts_dist.max(dim=-1)
+                # if farthest_dist < min_dist:
+                #     break
                 valid_points = torch.cat(
                     [valid_points, all_points[farthest_id].unsqueeze(0)], dim=0
                 )
@@ -430,15 +428,15 @@ def task_syn_obj(configs):
                         configs.init_dir,
                         configs.template_name,
                         scene_cfg["scene_id"].split("_scale")[0],
-                        f"{eee}**.npy"
+                        f"{eee}**.npy",
                     )
                     if len(glob(check_dir)) > 0:
                         continue_flag = True
                         break
                 if continue_flag:
-                    logging.info('skip')
+                    logging.info("skip")
                     continue
-                
+
                 obj_samples = {
                     k: (
                         v.to(task_config.device, non_blocking=True)
