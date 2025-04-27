@@ -107,13 +107,13 @@ def task_vis_usd(configs):
             result_iter = [r for r in list(result_iter) if r is not None]
 
         scene_dict = {}
-        for r in result_iter:
-            scene_id = r["scene_cfg"]["scene_id"]
+        for i, r in enumerate(result_iter):
+            scene_id = r["scene_cfg"]["scene_id"] + f"_{i}"
             if scene_id not in scene_dict:
                 scene_dict[scene_id] = []
             scene_dict[scene_id].append(r)
 
-        data_length = len(configs.task.data_type)
+        data_length = len(configs.task.qpos_type)
 
         hand_pose_scale_lst = np.ones(
             (

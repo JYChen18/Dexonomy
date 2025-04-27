@@ -1,0 +1,200 @@
+<mujoco model="mano">
+  <compiler angle="radian" meshdir="meshes" autolimits="true"/>
+
+  <option cone="elliptic" impratio="10"/>
+   <option impratio="10" integrator="implicitfast" cone="elliptic" noslip_iterations="2" >
+      <flag gravity="disable" nativeccd="enable"/>
+   </option>
+
+  <default>
+    <default class="right_hand">
+      <!-- <mesh scale="0.001 0.001 0.001"/> -->
+      <joint damping="0.05" armature="0.0002" frictionloss="0.01"/>
+      <position kp="5"/>
+      <default class="index1y">
+        <position ctrlrange="-0.349066 0.349066"/>
+      </default>
+      <default class="finger1x">
+        <position ctrlrange="-0.174533 1.5708"/>
+      </default>
+      <default class="finger2">
+        <position ctrlrange="0 1.74533"/>
+      </default>
+      <default class="finger3">
+        <position ctrlrange="0 1.74533"/>
+      </default>
+      <default class="middle1y">
+        <position ctrlrange="-0.523599 0.349066"/>
+      </default>
+      <default class="pinky1y">
+        <position ctrlrange="-0.698132 0.349066"/>
+      </default>
+      <default class="ring1y">
+        <position ctrlrange="-0.523599 0.349066"/>
+      </default>
+      <default class="thumb1y">
+        <position ctrlrange="-0.174533 2.61799"/>
+      </default>
+      <default class="thumb1z">
+        <position ctrlrange="-0.698132 0.698132"/>
+      </default>
+
+    </default>
+  </default>
+
+  <asset>
+    <mesh name="palm" file="palm.stl"/>
+    <mesh name="index1x" file="index1x.stl"/>
+    <mesh name="index2" file="index2.stl"/>
+    <mesh name="index3" file="index3.stl"/>
+    <mesh name="middle1x" file="middle1x.stl"/>
+    <mesh name="middle2" file="middle2.stl"/>
+    <mesh name="middle3" file="middle3.stl"/>
+    <mesh name="pinky1x" file="pinky1x.stl"/>
+    <mesh name="pinky2" file="pinky2.stl"/>
+    <mesh name="pinky3" file="pinky3.stl"/>
+    <mesh name="ring1x" file="ring1x.stl"/>
+    <mesh name="ring2" file="ring2.stl"/>
+    <mesh name="ring3" file="ring3.stl"/>
+    <mesh name="thumb1z" file="thumb1z.stl"/>
+    <mesh name="thumb2" file="thumb2.stl"/>
+    <mesh name="thumb3" file="thumb3.stl"/>
+  </asset>
+
+  <worldbody>
+    <body name="rh_palm">
+      <geom name="c_palm" type="mesh" mesh="palm"/>
+      <body name="index1y" pos="-0.0880972 -0.00520036 0.020686" quat="0.0207461 -0.704984 -0.0206397 -0.708619">
+        <inertial pos="0 0 0" mass="1e-3" diaginertia="1e-4 1e-4 1e-4"/>
+        <joint name="j_index1y" pos="0 0 0" axis="0 1 0" range="-0.349066 0.349066" actuatorfrcrange="-100 100"/>
+        <body name="index1x">
+          <inertial pos="0 0 0" mass="1e-3" diaginertia="1e-4 1e-4 1e-4"/>
+          <joint name="j_index1x" pos="0 0 0" axis="1 0 0" range="-0.174533 1.5708" actuatorfrcrange="-100 100"/>
+          <geom name="c_index1x" quat="0.0207461 0.704984 0.0206397 0.708619" type="mesh" mesh="index1x"/>
+          <body name="index2" pos="0.00238357 -0.00591432 -0.0323765">
+            <inertial pos="0 0 0" mass="1e-3" diaginertia="1e-4 1e-4 1e-4"/>
+            <joint name="j_index2" pos="0 0 0" axis="1 0 0" range="0 1.74533" actuatorfrcrange="-100 100"/>
+            <geom name="c_index2" quat="0.0207461 0.704984 0.0206397 0.708619" type="mesh" mesh="index2"/>
+            <body name="index3" pos="0 0 -0.0221942">
+              <inertial pos="0 0 0" mass="1e-3" diaginertia="1e-4 1e-4 1e-4"/>
+              <joint name="j_index3" pos="0 0 0" axis="1 0 0" range="0 1.74533" actuatorfrcrange="-100 100"/>
+              <geom name="c_index3" quat="0.0207461 0.704984 0.0206397 0.708619" type="mesh" mesh="index3"/>
+            </body>
+          </body>
+        </body>
+      </body>
+      <body name="middle1y" pos="-0.0946604 -0.00147896 -0.00335754" quat="0.0280283 -0.644307 -0.0115664 -0.764166">
+        <inertial pos="0 0 0" mass="1e-3" diaginertia="1e-4 1e-4 1e-4"/>
+        <joint name="j_middle1y" pos="0 0 0" axis="0 1 0" range="-0.523599 0.349066" actuatorfrcrange="-100 100"/>
+        <body name="middle1x">
+          <inertial pos="0 0 0" mass="1e-3" diaginertia="1e-4 1e-4 1e-4"/>
+          <joint name="j_middle1x" pos="0 0 0" axis="1 0 0" range="-0.174533 1.5708" actuatorfrcrange="-100 100"/>
+          <geom name="c_middle1x" quat="0.0280283 0.644307 0.0115664 0.764166" type="mesh" mesh="middle1x"/>
+          <body name="middle2" pos="-0.000320716 -0.00355526 -0.0315338">
+            <inertial pos="0 0 0" mass="1e-3" diaginertia="1e-4 1e-4 1e-4"/>
+            <joint name="j_middle2" pos="0 0 0" axis="1 0 0" range="0 1.74533" actuatorfrcrange="-100 100"/>
+            <geom name="c_middle2" quat="0.0280283 0.644307 0.0115664 0.764166" type="mesh" mesh="middle2"/>
+            <body name="middle3" pos="0 0 -0.0232755">
+              <inertial pos="0 0 0" mass="1e-3" diaginertia="1e-4 1e-4 1e-4"/>
+              <joint name="j_middle3" pos="0 0 0" axis="1 0 0" range="0 1.74533" actuatorfrcrange="-100 100"/>
+              <geom name="c_middle3" quat="0.0280283 0.644307 0.0115664 0.764166" type="mesh" mesh="middle3"/>
+            </body>
+          </body>
+        </body>
+      </body>
+      <body name="pinky1y" pos="-0.068787 -0.00994033 -0.0432093" quat="0.114604 0.469585 0.0826793 0.871505">
+        <inertial pos="0 0 0" mass="1e-3" diaginertia="1e-4 1e-4 1e-4"/>
+        <joint name="j_pinky1y" pos="0 0 0" axis="0 1 0" range="-0.698132 0.349066" actuatorfrcrange="-100 100"/>
+        <body name="pinky1x">
+          <inertial pos="0 0 0" mass="1e-3" diaginertia="1e-4 1e-4 1e-4"/>
+          <joint name="j_pinky1x" pos="0 0 0" axis="1 0 0" range="-0.174533 1.5708" actuatorfrcrange="-100 100"/>
+          <geom name="c_pinky1x" quat="0.114604 -0.469585 -0.0826793 -0.871505" type="mesh" mesh="pinky1x"/>
+          <body name="pinky2" pos="-0.000912324 -0.00112828 -0.021062">
+            <inertial pos="0 0 0" mass="1e-3" diaginertia="1e-4 1e-4 1e-4"/>
+            <joint name="j_pinky2" pos="0 0 0" axis="1 0 0" range="0 1.74533" actuatorfrcrange="-100 100"/>
+            <geom name="c_pinky2" quat="0.114604 -0.469585 -0.0826793 -0.871505" type="mesh" mesh="pinky2"/>
+            <body name="pinky3" pos="0 0 -0.0189469">
+              <inertial pos="0 0 0" mass="1e-3" diaginertia="1e-4 1e-4 1e-4"/>
+              <joint name="j_pinky3" pos="0 0 0" axis="1 0 0" range="0 1.74533" actuatorfrcrange="-100 100"/>
+              <geom name="c_pinky3" quat="0.114604 -0.469585 -0.0826793 -0.871505" type="mesh" mesh="pinky3"/>
+            </body>
+          </body>
+        </body>
+      </body>
+      <body name="ring1y" pos="-0.0817356 -0.00395742 -0.0266732" quat="0.0233679 0.585251 0.0590453 0.808362">
+        <inertial pos="0 0 0" mass="1e-3" diaginertia="1e-4 1e-4 1e-4"/>
+        <joint name="j_ring1y" pos="0 0 0" axis="0 1 0" range="-0.523599 0.349066" actuatorfrcrange="-100 100"/>
+        <body name="ring1x">
+          <inertial pos="0 0 0" mass="1e-3" diaginertia="1e-4 1e-4 1e-4"/>
+          <joint name="j_ring1x" pos="0 0 0" axis="1 0 0" range="-0.174533 1.5708" actuatorfrcrange="-100 100"/>
+          <geom name="c_ring1x" quat="-0.0233679 0.585251 0.0590453 0.808362" type="mesh" mesh="ring1x"/>
+          <body name="ring2" pos="0.00429787 -0.00356368 -0.0282983">
+            <inertial pos="0 0 0" mass="1e-3" diaginertia="1e-4 1e-4 1e-4"/>
+            <joint name="j_ring2" pos="0 0 0" axis="1 0 0" range="0 1.74533" actuatorfrcrange="-100 100"/>
+            <geom name="c_ring2" quat="-0.0233679 0.585251 0.0590453 0.808362" type="mesh" mesh="ring2"/>
+            <body name="ring3" pos="0 0 -0.0247859">
+              <inertial pos="0 0 0" mass="1e-3" diaginertia="1e-4 1e-4 1e-4"/>
+              <joint name="j_ring3" pos="0 0 0" axis="1 0 0" range="0 1.74533" actuatorfrcrange="-100 100"/>
+              <geom name="c_ring3" quat="-0.0233679 0.585251 0.0590453 0.808362" type="mesh" mesh="ring3"/>
+            </body>
+          </body>
+        </body>
+      </body>
+      <body name="thumb1y" pos="-0.0240897 -0.0155223 0.0258128" quat="0.457776 -0.494578 -0.459441 -0.578574">
+        <inertial pos="0 0 0" mass="1e-3" diaginertia="1e-4 1e-4 1e-4"/>
+        <joint name="j_thumb1y" pos="0 0 0" axis="0 1 0" range="-0.174533 2.61799" actuatorfrcrange="-100 100"/>
+        <body name="thumb1z">
+          <inertial pos="0 0 0" mass="1e-3" diaginertia="1e-4 1e-4 1e-4"/>
+          <joint name="j_thumb1z" pos="0 0 0" axis="0 0 1" range="-0.698132 0.698132" actuatorfrcrange="-100 100"/>
+          <geom name="c_thumb1z" quat="0.457776 0.494578 0.459441 0.578574" type="mesh" mesh="thumb1z"/>
+          <body name="thumb2" pos="0.0252649 -0.0175957 0" quat="0.574412 -0.601175 0.038173 0.554241">
+            <inertial pos="0 0 0" mass="1e-3" diaginertia="1e-4 1e-4 1e-4"/>
+            <joint name="j_thumb2" pos="0 0 0" axis="1 0 0" range="0 1.74533" actuatorfrcrange="-100 100"/>
+            <geom name="c_thumb2" quat="0.303832 0.79185 -0.375505 0.373706" type="mesh" mesh="thumb2"/>
+            <body name="thumb3" pos="0 0 -0.0270942">
+              <inertial pos="0 0 0" mass="1e-3" diaginertia="1e-4 1e-4 1e-4"/>
+              <joint name="j_thumb3" pos="0 0 0" axis="1 0 0" range="0 1.74533" actuatorfrcrange="-100 100"/>
+              <geom name="c_thumb3" quat="0.303832 0.79185 -0.375505 0.373706" type="mesh" mesh="thumb3"/>
+            </body>
+          </body>
+        </body>
+      </body>
+    </body>
+  </worldbody>
+
+  <contact>
+    <exclude body1="rh_palm" body2="index1x"/>
+    <exclude body1="rh_palm" body2="pinky1x"/>
+    <exclude body1="rh_palm" body2="ring1x"/>
+    <exclude body1="rh_palm" body2="middle1x"/>
+    <exclude body1="rh_palm" body2="thumb1z"/>
+    <exclude body1="rh_palm" body2="thumb2"/>
+  </contact>
+
+  <actuator>
+    <position name="rh_A_index1y" joint="j_index1y" class="index1y"/>
+    <position name="rh_A_index1x" joint="j_index1x" class="finger1x"/>
+    <position name="rh_A_index2" joint="j_index2" class="finger2"/>
+    <position name="rh_A_index3" joint="j_index3" class="finger3"/>
+    <position name="rh_A_middle1y" joint="j_middle1y" class="middle1y"/>
+    <position name="rh_A_middle1x" joint="j_middle1x" class="finger1x"/>
+    <position name="rh_A_middle2" joint="j_middle2" class="finger2"/>
+    <position name="rh_A_middle3" joint="j_middle3" class="finger3"/>
+    <position name="rh_A_pinky1y" joint="j_pinky1y" class="pinky1y"/>
+    <position name="rh_A_pinky1x" joint="j_pinky1x" class="finger1x"/>
+    <position name="rh_A_pinky2" joint="j_pinky2" class="finger2"/>
+    <position name="rh_A_pinky3" joint="j_pinky3" class="finger3"/>
+    <position name="rh_A_ring1y" joint="j_ring1y" class="ring1y"/>
+    <position name="rh_A_ring1x" joint="j_ring1x" class="finger1x"/>
+    <position name="rh_A_ring2" joint="j_ring2" class="finger2"/>
+    <position name="rh_A_ring3" joint="j_ring3" class="finger3"/>
+    <position name="rh_A_thumb1y" joint="j_thumb1y" class="thumb1y"/>
+    <position name="rh_A_thumb1z" joint="j_thumb1z" class="thumb1z"/>
+    <position name="rh_A_thumb2" joint="j_thumb2" class="finger2"/>
+    <position name="rh_A_thumb3" joint="j_thumb3" class="finger3"/>
+  </actuator>
+  <keyframe>
+    <key qpos='0 0.689522 0.444975 0.322825 -0.205064 1.01244 0.584575 0.1745 0.3491 1.37899 0 0.270475 0.3491 1.07353 0.410075 0.340275 0.300225 0.174525 0 0'
+    ctrl='0 0.689522 0.444975 0.322825 -0.205064 1.01244 0.584575 0.1745 0.3491 1.37899 0 0.270475 0.3491 1.07353 0.410075 0.340275 0.300225 0.174525 0 0'/>"
+  </keyframe>
+</mujoco>

@@ -3,6 +3,7 @@ import random
 from glob import glob
 
 import numpy as np
+import torch
 from transforms3d import quaternions as tq
 from torch.utils.data import Dataset, DataLoader
 from torch.utils.data._utils.collate import default_collate
@@ -20,7 +21,9 @@ from dexonomy.util.np_rot_util import (
 )
 
 
-def sample_init_pose(tm_obj: trimesh.Trimesh, init_point_num, init_inplane_num):
+def sample_init_pose(
+    tm_obj: trimesh.Trimesh, scale_range, init_point_num, init_inplane_num
+):
     # Sample contact points and corresponding normals
     points, tri_ind = trimesh.sample.sample_surface_even(tm_obj, init_point_num)
     more_point_num = init_point_num - points.shape[0]
@@ -36,16 +39,22 @@ def sample_init_pose(tm_obj: trimesh.Trimesh, init_point_num, init_inplane_num):
     delta_rot = np_axis_angle_rotation("X", angles).reshape(-1, 1, 3, 3)
     sampled_rot = (rot_base @ delta_rot).reshape(-1, 3, 3)
     sampled_trans = np.tile(points, (init_inplane_num, 1))
-
-    return sampled_rot, sampled_trans
+    sampled_scale = (
+        np.random.rand(sampled_trans.shape[0]) * (scale_range[1] - scale_range[0])
+        + scale_range[0]
+    )
+    return sampled_rot, sampled_trans, sampled_scale
 
 
 class ObjSampleDataset(Dataset):
 
-    def __init__(self, init_point_num, init_inplane_num, cfg_path, cfg_num):
+    def __init__(
+        self, scale_range, init_point_num, init_inplane_num, cfg_path, cfg_num
+    ):
         self.init_point_num = init_point_num
         self.init_inplane_num = init_inplane_num
-        self.path_lst = glob(cfg_path)
+        self.scale_range = scale_range
+        self.path_lst = np.random.permutation(sorted(glob(cfg_path)))
         if cfg_num is not None and cfg_num > 0:
             self.path_lst = self.path_lst[:cfg_num]
 
@@ -79,8 +88,8 @@ class ObjSampleDataset(Dataset):
         obj_scale = obj_info["scale"]
         obj_pose = np_array32(obj_info["pose"])
 
-        sampled_rot, sampled_trans = sample_init_pose(
-            tm_obj, self.init_point_num, self.init_inplane_num
+        sampled_rot, sampled_trans, sampled_scale = sample_init_pose(
+            tm_obj, self.scale_range, self.init_point_num, self.init_inplane_num
         )
         wf_ogc = (
             tq.rotate_vector(tm_obj.center_mass * obj_scale, obj_pose[3:])
@@ -92,16 +101,20 @@ class ObjSampleDataset(Dataset):
             if obj["type"] == "plane":
                 collision_plane = np_array32(obj["pose"])
 
+        assert (
+            collision_plane is None
+        ), "Currently do not support to change object scales on table!"
+
         return {
             "scene_cfg": scene_cfg,
             "collision_plane": collision_plane,
             "collision_mesh": (obj_name, tm_obj),
-            "obj_scale": np_array32(obj_scale),
             "wf_sof_pose": np_array32(obj_info["pose"]),
             "wf_ogc": np_array32(wf_ogc),
             "wf_ogd": np_array32(scene_cfg["interest_direction"]),
             "sampled_rot": np_array32(sampled_rot),
             "sampled_trans": np_array32(sampled_trans),
+            "sampled_scale": np_array32(sampled_scale),
         }
 
 
@@ -124,6 +137,7 @@ def _customized_collate_fn(list_data):
 
 def get_object_dataloader(configs, n_worker):
     dataset = ObjSampleDataset(
+        scale_range=configs.scale_range,
         init_point_num=configs.init_point_num,
         init_inplane_num=configs.init_inplane_num,
         cfg_path=configs.cfg_path,

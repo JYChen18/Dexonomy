@@ -20,19 +20,30 @@ def check_stop(test_log_path):
         return True
     return False
 
+def check_finish_synobj(obj_log_path):
+    logging.info(f"{obj_log_path}, {os.path.exists(obj_log_path)}")
+    if os.path.exists(obj_log_path):
+        with open(obj_log_path, "r") as f:
+            log_info = f.read()
+        if "Finish task syn_obj" in log_info:
+            return True
+    return False
 
 def run_syn_obj(
-    general_config_str, syn_obj_config_str, template_name, device_id, log_id
+    general_config_str, syn_obj_config_str, template_name, device_id, log_id, obj_log_path
 ):
     syn_obj_cmd = f"CUDA_VISIBLE_DEVICES={device_id} python -m dexonomy.main task=syn_obj template_name={template_name} log_id={log_id} {general_config_str} {syn_obj_config_str}"
-    logging.warning(syn_obj_cmd)
-    os.system(syn_obj_cmd)
+    logging.info(syn_obj_cmd)
+    count = 0
+    while not check_finish_synobj(obj_log_path) and count < 10:
+        os.system(syn_obj_cmd)
+        count += 1
     return
 
 
 def run_syn_hand(general_config_str, syn_hand_config_str, test_log_path):
     syn_hand_cmd = f"python -m dexonomy.main task=syn_hand {general_config_str} {syn_hand_config_str}"
-    logging.warning(syn_hand_cmd)
+    logging.info(syn_hand_cmd)
     while not check_stop(test_log_path):
         os.system(syn_hand_cmd)
     return
@@ -40,7 +51,7 @@ def run_syn_hand(general_config_str, syn_hand_config_str, test_log_path):
 
 def run_syn_test(general_config_str, syn_test_config_str, test_log_path):
     syn_test_cmd = f"python -m dexonomy.main task=syn_test {general_config_str} {syn_test_config_str}"
-    logging.warning(syn_test_cmd)
+    logging.info(syn_test_cmd)
     time.sleep(5)
     while not check_stop(test_log_path):
         os.system(syn_test_cmd)
@@ -115,6 +126,9 @@ def run_together(configs):
             ),
         ]
         for i, template_name in enumerate(hand_template_names):
+            obj_log_path = os.path.join(
+                os.path.dirname(configs.log_dir), f"syn_obj_{i}", "main.log"
+            )
             futures.append(
                 executor.submit(
                     run_syn_obj,
@@ -123,6 +137,7 @@ def run_together(configs):
                     template_name,
                     configs.gpu_list[i],
                     i,
+                    obj_log_path,
                 )
             )
 

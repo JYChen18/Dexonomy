@@ -352,7 +352,7 @@ class MuJoCo_BaseEnv:
 
         if self.debug_viewer is not None:
             self.debug_viewer.sync()
-            # pdb.set_trace()
+            pdb.set_trace()
         return
 
     def debug_postprocess(self, save_path=None):
@@ -585,7 +585,9 @@ class MuJoCo_RobotFK:
                         radius=geom.size[0], height=2 * geom.size[1]
                     )
                 else:
-                    raise NotImplementedError
+                    raise NotImplementedError(
+                        f"Unsupported mujoco primitive type: {geom.type}"
+                    )
             else:  # Meshes
                 mjm = self.model.mesh(mesh_id)
                 vert = self.model.mesh_vert[
@@ -595,6 +597,9 @@ class MuJoCo_RobotFK:
                     mjm.faceadr[0] : mjm.faceadr[0] + mjm.facenum[0]
                 ]
                 tm = trimesh.Trimesh(vertices=vert, faces=face)
+
+            if vis_mesh_mode == "collision":
+                tm = tm.convex_hull
 
             geom_rot = self.data.geom_xmat[i].reshape(3, 3)
             geom_trans = self.data.geom_xpos[i]
