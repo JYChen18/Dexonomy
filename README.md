@@ -15,18 +15,17 @@ Official implementation of *Dexonomy: Synthesizing All Dexterous Grasp Types in 
 Our algorithm synthesizes **contact-rich, penetration-free, and physically plausible** dexterous grasps for:
 - Any grasp type
 - Any object
-- Any articulated robotic hand
+- Any articulated hand
 
 All starting from just **one** human-annotated template *per hand and grasp type*.
 
 #### Supported Features
-- Hands: Shadow, Allegro, Leap
+- Hands: Shadow, Allegro, Leap, MANO, Inspire, Unitree_G1
 - Object Scenes: Single (floating & tabletop), Clustered (light clutter)
 - Object Assets: ShapeNet, Objaverse
 - Physics Simulator: MuJoCo
 
 #### Planned Features
-- Hands: MANO, Franka, ... 
 - Object Assets: Articulated objects
 - Motion Synthesis: cuRobo integration, Simulation testing
 
