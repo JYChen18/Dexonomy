@@ -12,7 +12,6 @@ template_name: "**"
 obj_name: "**"
 data_name: '**'
 
-obj_mass: 0.1   # unit: kg
 force_closure: True
 update_template: "nearest"   # Choices: False, "body", "nearest", "arbi"
 max_template_evolution: 2

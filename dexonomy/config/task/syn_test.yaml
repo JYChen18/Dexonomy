@@ -1,7 +1,5 @@
 miu_coef: [0.6, 0.02]
-force_closure: ${force_closure}
 trans_thre: 0.05
 angle_thre: 15
-test_mode: static # or 'moving'
 
 cust_log_dir: ${log_dir}

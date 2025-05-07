@@ -58,21 +58,26 @@ class ObjSampleDataset(Dataset):
         scene_cfg = np.load(scene_cfg_path, allow_pickle=True).item()
 
         for obj_info in scene_cfg["scene"].values():
-            if obj_info["type"] == "rigid_mesh" and not os.path.isabs(
-                obj_info["file_path"]
-            ):
-                obj_info["file_path"] = os.path.join(
-                    os.path.dirname(scene_cfg_path), obj_info["file_path"]
-                )
-                obj_info["xml_path"] = os.path.join(
-                    os.path.dirname(scene_cfg_path), obj_info["xml_path"]
-                )
-                obj_info["urdf_path"] = os.path.join(
-                    os.path.dirname(scene_cfg_path), obj_info["urdf_path"]
-                )
+            if "file_path" in obj_info and not os.path.isabs(obj_info["file_path"]):
+                for k, v in obj_info.items():
+                    if k.endswith("_path"):
+                        obj_info[k] = os.path.join(os.path.dirname(scene_cfg_path), v)
+            if "part_info" in obj_info:
+                for k, v in obj_info["part_info"].items():
+                    if not os.path.isabs(v["file_path"]):
+                        v["file_path"] = os.path.join(
+                            os.path.dirname(scene_cfg_path), v["file_path"]
+                        )
 
-        obj_name = scene_cfg["interest_obj_name"]
+        obj_name = scene_cfg["task"]["obj_name"]
         obj_info = scene_cfg["scene"][obj_name]
+        if obj_info["type"] == "articulated_object":
+            part_name = scene_cfg["task"]["part_name"]
+            obj_info = obj_info["part_info"][part_name]
+        elif obj_info["type"] != "rigid_object":
+            raise NotImplementedError(
+                f"Unsupported interest object type: {obj_info['type']}"
+            )
         tm_obj = trimesh.load(obj_info["file_path"], force="mesh")
         obj_scale = obj_info["scale"]
         obj_pose = np_array32(obj_info["pose"])
@@ -80,10 +85,29 @@ class ObjSampleDataset(Dataset):
         sampled_rot, sampled_trans = sample_init_pose(
             tm_obj, self.init_point_num, self.init_inplane_num
         )
-        wf_ogc = (
+
+        wf_ext_center = obj_center = (
             tq.rotate_vector(tm_obj.center_mass * obj_scale, obj_pose[3:])
             + obj_pose[:3]
         )
+        obj_mass = obj_info["mass"] if "mass" in obj_info else 0.1
+        if scene_cfg["task"]["type"] == "hinge":  # rotation axis is fixed
+            move_direction = np.cross(
+                scene_cfg["task"]["axis"], obj_center - scene_cfg["task"]["pos"]
+            )
+            wf_ext_wrench = np.concatenate(
+                [move_direction * obj_mass, move_direction * 0.0]
+            )
+        elif scene_cfg["task"]["type"] == "slide":
+            wf_ext_wrench = np.concatenate(
+                [scene_cfg["task"]["axis"] * obj_mass, scene_cfg["task"]["axis"] * 0.0]
+            )
+        elif scene_cfg["task"]["type"] == "force_closure":
+            wf_ext_wrench = np.ones(6)
+        else:
+            raise NotImplementedError(
+                f"Unsupported task type: {scene_cfg['task']['type']}. Avaiable choices: 'hinge', 'slide'."
+            )
 
         collision_plane = None
         for obj in scene_cfg["scene"].values():
@@ -95,9 +119,9 @@ class ObjSampleDataset(Dataset):
             "collision_plane": collision_plane,
             "collision_mesh": (obj_name, tm_obj),
             "obj_scale": np_array32(obj_scale),
-            "wf_sof_pose": np_array32(obj_info["pose"]),
-            "wf_ogc": np_array32(wf_ogc),
-            "wf_ogd": np_array32(scene_cfg["interest_direction"]),
+            "wf_sof_pose": obj_pose,
+            "wf_ext_center": np_array32(wf_ext_center),
+            "wf_ext_wrench": np_array32(wf_ext_wrench),
             "sampled_rot": np_array32(sampled_rot),
             "sampled_trans": np_array32(sampled_trans),
         }

@@ -14,7 +14,30 @@ def np_normalize_vector(v: np.ndarray) -> np.ndarray:
     return v / np.maximum(np.linalg.norm(v, axis=-1, keepdims=True), 1e-12)
 
 
-def np_interplote_pose(pose1: np.ndarray, pose2: np.ndarray, step: int) -> np.ndarray:
+def np_interpolate_pose(
+    pose1,
+    pose2=None,
+    move_type=None,
+    move_pos=None,
+    move_axis=None,
+    move_dist=None,
+    step=20,
+):
+    if move_type == "hinge":
+        pose_lst = np_interpolate_hinge(pose1, move_pos, move_axis, move_dist, step)
+    elif move_type == "slide":
+        if pose2 is None:
+            pose2 = np.copy(pose1)
+            pose2[:3] += move_axis * move_dist
+        pose_lst = np_interpolate_slide(pose1, pose2, step)
+    else:
+        raise NotImplementedError(
+            f"Unsupported task type: {move_type}. Avaiable choices: 'hinge', 'slide'."
+        )
+    return pose_lst
+
+
+def np_interpolate_slide(pose1: np.ndarray, pose2: np.ndarray, step: int) -> np.ndarray:
     trans1, quat1 = pose1[:3], pose1[3:7]
     trans2, quat2 = pose2[:3], pose2[3:7]
     slerp = Slerp([0, 1], R.from_quat([quat1, quat2], scalar_first=True))
@@ -23,7 +46,37 @@ def np_interplote_pose(pose1: np.ndarray, pose2: np.ndarray, step: int) -> np.nd
     return np.concatenate([trans_interp, quat_interp], axis=1)
 
 
-def np_interplote_qpos(qpos1: np.ndarray, qpos2: np.ndarray, step: int) -> np.ndarray:
+def np_interpolate_hinge(pose1, hinge_pos, hinge_axis, move_angle, step):
+    """
+    pose1: (7,) initial pose (translation and quaternion)
+    hinge_pos: (x,y,z) of hinge point
+    hinge_axis: (x,y,z) of hinge axis
+    move_angle: total angle to move (unit: rad)
+    step: number of interpolation steps
+    """
+    initial_offset = pose1[:3] - hinge_pos
+    initial_rot = R.from_quat(pose1[3:], scalar_first=True)
+    angles = np.linspace(0, move_angle, step)
+
+    interpolated_poses = []
+    for angle in angles:
+        delta_rot = R.from_rotvec(angle * np_normalize_vector(hinge_axis))
+        new_offset = delta_rot.apply(initial_offset)
+        new_pos = hinge_pos + new_offset
+        new_rot = delta_rot * initial_rot
+
+        # Build new transformation matrix
+        new_pose = np.zeros(7)
+        new_pose[:3] = new_pos
+        new_pose[3:] = new_rot.as_quat(scalar_first=True)
+        interpolated_poses.append(new_pose)
+
+    return interpolated_poses
+
+
+def np_interpolate_qpos(
+    qpos1: np.ndarray, qpos2: np.ndarray, step: int = 10
+) -> np.ndarray:
     return np.linspace(qpos1, qpos2, step + 1)[1:]
 
 

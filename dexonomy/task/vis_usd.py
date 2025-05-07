@@ -99,7 +99,7 @@ def task_vis_usd(configs):
             input_path_lst = np.random.permutation(input_path_lst)[
                 : configs.task.max_num
             ]
-        logging.info(f"Use {configs.task.max_num}")
+        logging.info(f"Use {min(len(input_path_lst), configs.task.max_num)}")
 
         param_lst = [(i, kin, configs.task) for i in input_path_lst]
         with multiprocessing.Pool(processes=configs.n_worker) as pool:

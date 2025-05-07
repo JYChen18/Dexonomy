@@ -71,11 +71,10 @@ class ObjectAligner:
         sampled_trans,
         obj_scale,
         wf_sof_pose,
-        wf_ogc,
-        wf_ogd,
+        wf_ext_center,
+        wf_ext_wrench,
         collision_plane,
         collision_mesh_id,
-        unified_obj_mass,
     ):
 
         opt_q = torch_matrix_to_quaternion(sampled_rot)
@@ -181,8 +180,8 @@ class ObjectAligner:
                 "collision_mesh_id": collision_mesh_id[parallel_id_lst],
                 "parallel_id_lst": parallel_id_lst,
                 "obj_pose": wf_sof_pose.repeat_interleave(h, dim=0)[loss_valid_idx],
-                "obj_gd": wf_ogd.repeat_interleave(h, dim=0)[loss_valid_idx],
-                "obj_gc": wf_ogc.repeat_interleave(h, dim=0)[loss_valid_idx],
+                "ext_center": wf_ext_center.repeat_interleave(h, dim=0)[loss_valid_idx],
+                "ext_wrench": wf_ext_wrench.repeat_interleave(h, dim=0)[loss_valid_idx],
             }
 
         remain_number = loss_valid_idx.shape[0]
@@ -215,8 +214,8 @@ class ObjectAligner:
             qp_valid_idx = self.qp_based_filter(
                 result_dict["obj_cp"],
                 result_dict["obj_cn"],
-                result_dict["obj_gd"] * unified_obj_mass,
-                result_dict["obj_gc"],
+                result_dict["ext_wrench"],
+                result_dict["ext_center"],
                 self.qp_filter["force_closure"],
             )
             for k, v in result_dict.items():
@@ -294,18 +293,18 @@ class ObjectAligner:
 
     @torch.no_grad()
     def qp_based_filter(
-        self, obj_points, obj_normals, gravity, gravity_center, force_closure
+        self, obj_points, obj_normals, ext_wrench, ext_center, force_closure
     ):
         if force_closure:
-            gravity *= 0.0
+            ext_wrench *= 0.0
         miu_coef = self.qp_filter["miu_coef"]
         qp_error = torch.ones(
             obj_points.shape[0], dtype=torch.float32, device=self.device
         )
         if self.qp_filter["batched"]:
-            # logging.info(
-            #     f"qp shape: {obj_points.shape} {self.qp_filter['max_batch_size']}"
-            # )
+            logging.debug(
+                f"qp shape: {obj_points.shape} {self.qp_filter['max_batch_size']}"
+            )
             max_batch_size = self.qp_filter["max_batch_size"] // obj_points.shape[-2]
             batch_num = math.ceil(obj_points.shape[0] / max_batch_size)
             for i in range(batch_num):
@@ -315,8 +314,8 @@ class ObjectAligner:
                 _, qp_error[start:end] = get_qp_error_batched(
                     obj_points[start:end],
                     obj_normals[start:end],
-                    gravity[start:end],
-                    gravity_center[start:end],
+                    ext_wrench[start:end],
+                    ext_center[start:end],
                     miu_coef,
                 )
         else:
@@ -325,8 +324,8 @@ class ObjectAligner:
                 _, qp_error[i] = single_solver.solve(
                     obj_points[i].cpu().numpy(),
                     obj_normals[i].cpu().numpy(),
-                    gravity[i].cpu().numpy(),
-                    gravity_center[i].cpu().numpy(),
+                    ext_wrench[i].cpu().numpy(),
+                    ext_center[i].cpu().numpy(),
                 )
 
         out_valid_idx = qp_error < self.qp_filter["threshold"]
@@ -443,15 +442,14 @@ def task_syn_obj(configs):
                     obj_samples["sampled_trans"],
                     obj_samples["obj_scale"],
                     obj_samples["wf_sof_pose"],
-                    obj_samples["wf_ogc"],
-                    obj_samples["wf_ogd"],
+                    obj_samples["wf_ext_center"],
+                    obj_samples["wf_ext_wrench"],
                     (
                         obj_samples["collision_plane"]
                         if "collision_plane" in obj_samples
                         else None
                     ),
                     collision_mesh_id,
-                    configs.obj_mass,
                 )
                 succ_num = result_dict["grasp_pose"].shape[0]
                 logging.info(f"Get {succ_num} valid")
@@ -466,7 +464,8 @@ def task_syn_obj(configs):
                     obj_cp,
                     obj_cn,
                     obj_id,
-                    obj_gc,
+                    ext_center,
+                    ext_wrench,
                 ) in enumerate(
                     zip(
                         result_dict["grasp_pose"],
@@ -476,7 +475,8 @@ def task_syn_obj(configs):
                         result_dict["obj_cp"],
                         result_dict["obj_cn"],
                         result_dict["parallel_id_lst"],
-                        result_dict["obj_gc"],
+                        result_dict["ext_center"],
+                        result_dict["ext_wrench"],
                     )
                 ):
 
@@ -504,7 +504,8 @@ def task_syn_obj(configs):
                                 "necessary_contact_body_names"
                             ],
                             "obj_worldframe_contacts": obj_worldframe_contacts,
-                            "obj_gravity_center": obj_gc,
+                            "ext_center": ext_center,
+                            "ext_wrench": ext_wrench,
                             "scene_cfg": scene_cfg,
                         },
                     )

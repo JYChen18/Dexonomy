@@ -17,61 +17,40 @@ def _single_validation(params):
 
     grasp_data = np.load(input_npy_path, allow_pickle=True).item()
 
-    scene_cfg = grasp_data["scene_cfg"]
-    for obj_cfg in scene_cfg["scene"].values():
-        if obj_cfg["type"] == "rigid_mesh":
-            obj_info = load_json(
-                os.path.join(
-                    os.path.dirname(obj_cfg["file_path"]), "../info/simplified.json"
-                )
-            )
-            obj_coef = obj_info["mass"] / (
-                obj_info["density"] * (obj_info["scale"] ** 3)
-            )
-            obj_cfg["density"] = configs.obj_mass / (
-                obj_coef * np.prod(obj_cfg["scale"])
-            )
-
     sim_env = MuJoCo_TestEnv(
         hand_xml_path=hand_config.xml_path,
         hand_add_mocap=hand_config.add_mocap,
         hand_exclude_table_contact=hand_config.exclude_table_contact,
         friction_coef=task_config.miu_coef,
-        scene_cfg=scene_cfg,
+        scene_cfg=grasp_data["scene_cfg"],
         debug_render=configs.debug_render,
         debug_viewer=configs.debug_viewer,
     )
 
-    assert (
-        not task_config.force_closure
-        or task_config.test_mode == "static"
-        or sim_env.plane_num == 0
-    )
-    if task_config.force_closure:
+    if grasp_data["scene_cfg"]["task"]["type"] == "force_closure":
+        grasp_data["scene_cfg"]["task"]["type"] = "slide"
         external_force_direction = np.array(
-            [
-                [1.0, 0, 0, 0, 0, 0],
-                [-1.0, 0, 0, 0, 0, 0],
-                [0.0, 1, 0, 0, 0, 0],
-                [0.0, -1, 0, 0, 0, 0],
-                [0.0, 0, 1, 0, 0, 0],
-                [0.0, 0, -1, 0, 0, 0],
-            ]
+            [[1.0, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]
         )
+        for i, extforce_direction in enumerate(external_force_direction):
+            grasp_data["scene_cfg"]["task"]["axis"] = extforce_direction
+            succ_flag = sim_env.test_mocap_moving(
+                grasp_data["grasp_qpos"],
+                grasp_data["squeeze_qpos"],
+                task_config.trans_thre,
+                task_config.angle_thre,
+                grasp_data["scene_cfg"]["task"],
+            )
+            if not succ_flag:
+                break
     else:
-        external_force_direction = [grasp_data["scene_cfg"]["interest_direction"]]
-
-    for i, extforce_direction in enumerate(external_force_direction):
-        succ_flag = eval(f"sim_env.test_mocap_{task_config.test_mode}")(
+        succ_flag = sim_env.test_mocap_moving(
             grasp_data["grasp_qpos"],
             grasp_data["squeeze_qpos"],
             task_config.trans_thre,
             task_config.angle_thre,
-            moving_distance=0.1 * extforce_direction[:3],
-            extforce=-10 * extforce_direction * configs.obj_mass,
+            grasp_data["scene_cfg"]["task"],
         )
-        if not succ_flag:
-            break
 
     sim_env.debug_postprocess(
         save_path=input_npy_path.replace(configs.grasp_dir, configs.debug_dir).replace(

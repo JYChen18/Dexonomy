@@ -1,6 +1,7 @@
 import trimesh
 import numpy as np
 
+from dexonomy.sim.mujoco_util import MuJoCo_RobotFK
 from dexonomy.util.np_rot_util import np_normalize_vector, np_normal_to_rot
 
 
@@ -45,8 +46,13 @@ def get_line_mesh(point_lst):
 def scene_cfg2mesh(scene_cfg):
     tm_lst = []
     for obj in scene_cfg["scene"].values():
-        if obj["type"] == "rigid_mesh":
+        if obj["type"] == "rigid_object":
             tm = trimesh.load(obj["file_path"], force="mesh")
+            tm.vertices *= obj["scale"]
+        elif obj["type"] == "articulated_object":
+            arti_obj = MuJoCo_RobotFK(obj["xml_path"], vis_mesh_mode="visual")
+            xmat, xpos = arti_obj.forward_kinematics(0)
+            tm = arti_obj.get_posed_meshes(xmat, xpos)
             tm.vertices *= obj["scale"]
         elif obj["type"] == "plane":
             plane_thick = 0.01

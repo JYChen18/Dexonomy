@@ -5,7 +5,7 @@ object:
   batch_size: 10
   init_point_num: 1024
   init_inplane_num: 8
-  cfg_path: ${asset_root}/object/DGN_obj_v2/processed_data/**/scene_cfg/floating/**.npy
+  cfg_path: ${asset_root}/object/PartNetObj/processed_data/**/scene_cfg/**.npy
   cfg_num: 100
 
 matcher:

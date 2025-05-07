@@ -47,16 +47,15 @@ def _body_filter(ho_contact_lst, necessary_contact_body_names, filter_config):
 def _qp_filter(
     contact_pos,
     contact_normal,
-    obj_mass,
-    obj_gravity_direction,
-    obj_gravity_center,
+    ext_wrench,
+    ext_center,
     filter_config,
 ):
     contact_wrench, wrench_error = ContactQP(miu_coef=filter_config.miu_coef).solve(
         contact_pos,
         contact_normal,
-        obj_gravity_direction * (obj_mass if not filter_config.force_closure else 0.0),
-        obj_gravity_center,
+        ext_wrench * (1.0 if not filter_config.force_closure else 0.0),
+        ext_center,
     )
     if wrench_error > filter_config.threshold:
         logging.debug(f"Grasp stage got bad QP error {wrench_error}")
@@ -147,9 +146,8 @@ def _single_hand_refine(params):
     contact_wrench = _qp_filter(
         hand_point,
         hand_normal,
-        configs.obj_mass,
-        grasp_data["scene_cfg"]["interest_direction"],
-        grasp_data["obj_gravity_center"],
+        grasp_data["ext_wrench"],
+        grasp_data["ext_center"],
         task_config.grasp.qp_filter,
     )
     if contact_wrench is None:
@@ -202,7 +200,7 @@ def _single_hand_refine(params):
 
     if task_config.pregrasp:
         for ii in range(task_config.pregrasp.outer_iter):
-            sim_env.set_rigid_object_margin(
+            sim_env.set_obj_margin(
                 task_config.pregrasp.ho_target_dist
                 * min((ii + 1) / task_config.pregrasp.outer_iter * 2, 1)
             )
