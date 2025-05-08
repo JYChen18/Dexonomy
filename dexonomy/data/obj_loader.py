@@ -103,16 +103,19 @@ class ObjSampleDataset(Dataset):
                 [scene_cfg["task"]["axis"] * obj_mass, scene_cfg["task"]["axis"] * 0.0]
             )
         elif scene_cfg["task"]["type"] == "force_closure":
-            wf_ext_wrench = np.ones(6)
+            wf_ext_wrench = np.zeros(6)
         else:
             raise NotImplementedError(
-                f"Unsupported task type: {scene_cfg['task']['type']}. Avaiable choices: 'hinge', 'slide'."
+                f"Unsupported task type: {scene_cfg['task']['type']}. Avaiable choices: 'hinge', 'slide', 'force_closure'."
             )
 
         collision_plane = None
-        for obj in scene_cfg["scene"].values():
-            if obj["type"] == "plane":
-                collision_plane = np_array32(obj["pose"])
+        if "virtual_plane" in obj_info:
+            collision_plane = np_array32(obj_info["virtual_plane"])
+        else:
+            for obj in scene_cfg["scene"].values():
+                if obj["type"] == "plane":
+                    collision_plane = np_array32(obj["pose"])
 
         return {
             "scene_cfg": scene_cfg,

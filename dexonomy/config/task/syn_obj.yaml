@@ -5,7 +5,7 @@ object:
   batch_size: 10
   init_point_num: 1024
   init_inplane_num: 8
-  cfg_path: ${asset_root}/object/PartNetObj/processed_data/**/scene_cfg/**.npy
+  cfg_path: ${asset_root}/object/PartNetObj/processed_data/**/scene_cfg/floating/**.npy
   cfg_num: 100
 
 matcher:
@@ -21,8 +21,7 @@ matcher:
     batched: True
     max_batch_size: 30000 
     threshold: 0.01
-    miu_coef: [0.2, 0.001]    # This should be small
-    force_closure: ${force_closure}
+    miu_coef: [0.2, 0.001]    # This should be small to leave more high-quality grasps
   fps_filter:
     enable: True
     max_num: 10

@@ -216,7 +216,6 @@ class ObjectAligner:
                 result_dict["obj_cn"],
                 result_dict["ext_wrench"],
                 result_dict["ext_center"],
-                self.qp_filter["force_closure"],
             )
             for k, v in result_dict.items():
                 result_dict[k] = v[qp_valid_idx]
@@ -292,11 +291,7 @@ class ObjectAligner:
         return out_valid_idx
 
     @torch.no_grad()
-    def qp_based_filter(
-        self, obj_points, obj_normals, ext_wrench, ext_center, force_closure
-    ):
-        if force_closure:
-            ext_wrench *= 0.0
+    def qp_based_filter(self, obj_points, obj_normals, ext_wrench, ext_center):
         miu_coef = self.qp_filter["miu_coef"]
         qp_error = torch.ones(
             obj_points.shape[0], dtype=torch.float32, device=self.device
@@ -404,7 +399,7 @@ def task_syn_obj(configs):
                     check_dir = os.path.join(
                         configs.init_dir,
                         configs.template_name,
-                        scene_cfg["scene_id"],
+                        scene_cfg["scene_id"].replace("/", "_"),
                         f"{eee}**.npy",
                     )
                     if len(glob(check_dir)) > 0:
@@ -484,7 +479,7 @@ def task_syn_obj(configs):
                     grasp_dir = os.path.join(
                         configs.init_dir,
                         hand_temp_dict["hand_template_name"],
-                        scene_cfg["scene_id"],
+                        scene_cfg["scene_id"].replace("/", "_"),
                     )
                     os.makedirs(grasp_dir, exist_ok=True)
 

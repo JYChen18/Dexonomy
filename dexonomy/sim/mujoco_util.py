@@ -11,8 +11,10 @@ import mujoco.viewer
 import transforms3d.quaternions as tq
 
 from dexonomy.util.np_rot_util import (
-    np_interpolate_pose,
-    np_interpolate_qpos,
+    np_normalize_vector,
+    np_interp_hinge,
+    np_interp_slide,
+    np_interp_qpos,
     np_array32,
     np_transform_points,
     np_inv_transform_points,
@@ -66,7 +68,9 @@ class MuJoCo_BaseEnv:
             elif obj_type == "articulated_object":
                 self._add_articulated_object(obj_name, **obj_cfg)
             else:
-                raise NotImplementedError
+                raise NotImplementedError(
+                    f"Unsupported object type: {obj_type}. Available choices: 'rigid_object', 'articulated_object', 'plane'."
+                )
         self.obj_init_qpos = np_array32(self.obj_init_qpos)
 
         self._set_friction(friction_coef)
@@ -86,9 +90,6 @@ class MuJoCo_BaseEnv:
         self.interest_obj_bodyid = self.model.body(
             self.obj_prefix + interest_obj_name
         ).id
-        print(self.interest_obj_bodyid)
-        print(self.hand_body_num)
-        print([(b.name, self.model.body(b.name).id) for b in self.spec.bodies])
 
         mujoco.mj_resetDataKeyframe(self.model, self.data, 0)
         mujoco.mj_forward(self.model, self.data)
@@ -263,13 +264,28 @@ class MuJoCo_BaseEnv:
         else:
             return self._qpos2ctrl_matrix @ hand_qpos
 
-    def get_interest_rigid_object_pose(self):
+    def get_interest_object_pose(self):
         return np.concatenate(
             [
                 self.data.xpos[self.interest_obj_bodyid],
                 self.data.xquat[self.interest_obj_bodyid],
             ]
         )
+
+    def get_interest_object_gravity(self):
+        obj_gravity = self.model.body_subtreemass[self.interest_obj_bodyid] * 9.8
+        if obj_gravity < 0.001:
+            logging.error(
+                f"Too small object gravity: {obj_gravity}. Please check the object density."
+            )
+        return obj_gravity
+
+    def set_interest_object_extforce(self, extforce):
+        if np.linalg.norm(extforce) < 0.001:
+            logging.error(
+                f"Too small external force: {extforce}. Please check the axis in task of scene cfg."
+            )
+        self.data.xfrc_applied[self.interest_obj_bodyid][:3] = extforce
 
     def get_hand_qpos(self):
         return self.data.qpos[: self.hand_nq]
@@ -366,9 +382,9 @@ class MuJoCo_BaseEnv:
             if self.hand_add_mocap:
                 self.data.mocap_pos[0] = pose_lst[j][:3]
                 self.data.mocap_quat[0] = pose_lst[j][3:7]
-            self.data.ctrl[:] = qpos_lst[j]
+            self.data.ctrl[:] = self._qpos2ctrl(qpos_lst[j])
             if extforce_lst is not None:
-                self.data.xfrc_applied[self.interest_obj_bodyid][:3] = extforce_lst[j]
+                self.set_interest_object_extforce(extforce_lst[j])
             self.control_hand_step(step_inner)
         return
 
@@ -522,52 +538,118 @@ class MuJoCo_TestEnv(MuJoCo_BaseEnv):
             g.condim = 4
         return
 
-    def test_mocap_moving(
-        self,
-        grasp_qpos,
-        squeeze_qpos,
-        trans_thre,
-        angle_thre,
-        move_cfg,
+    def test_mocap(
+        self, grasp_qpos, squeeze_qpos, trans_thre, angle_thre, move_cfg, step=10
     ):
-        squeeze_pose_lst = np_interpolate_pose(
-            pose1=grasp_qpos[:7], pose2=squeeze_qpos[:7], move_type="slide"
-        )
-        squeeze_qpos_lst = np_interpolate_qpos(
-            self._qpos2ctrl(grasp_qpos), self._qpos2ctrl(squeeze_qpos)
-        )
+        if move_cfg["type"] == "force_closure":
+            return self.test_mocap_fc(
+                grasp_qpos, squeeze_qpos, trans_thre, angle_thre, step
+            )
+        elif move_cfg["type"] == "slide":
+            return self.test_mocap_slide(
+                grasp_qpos, squeeze_qpos, trans_thre, angle_thre, move_cfg, step
+            )
+        elif move_cfg["type"] == "hinge":
+            return self.test_mocap_hinge(
+                grasp_qpos, squeeze_qpos, trans_thre, angle_thre, move_cfg, step
+            )
+        else:
+            raise NotImplementedError(
+                f"Unsupported task type: {move_cfg['type']}. Avaiable choices: 'hinge', 'slide', 'force_closure'."
+            )
 
-        move_pose_lst = np_interpolate_pose(
-            pose1=squeeze_qpos[:7],
-            move_type=move_cfg["type"],
-            move_pos=move_cfg["pos"],
-            move_axis=move_cfg["axis"],
-            move_dist=move_cfg["distance"],
+    def test_mocap_fc(self, grasp_qpos, squeeze_qpos, trans_thre, angle_thre, step):
+        external_force_direction = np.array(
+            [[1.0, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]
         )
-        move_qpos_lst = [self._qpos2ctrl(squeeze_qpos)] * len(move_pose_lst)
+        squeeze_pose_lst = np_interp_slide(grasp_qpos[:7], squeeze_qpos[:7], step)
+        squeeze_qpos_lst = np_interp_qpos(grasp_qpos, squeeze_qpos, step=step)
+
+        for extforce_dir in external_force_direction:
+            self.reset_qpos(grasp_qpos)
+            init_obj_pose = np.copy(self.get_interest_object_pose())
+            self.control_hand_with_lst(squeeze_pose_lst, squeeze_qpos_lst)
+            self.set_interest_object_extforce(
+                extforce_dir * self.get_interest_object_gravity()
+            )
+            for _ in range(10):
+                self.control_hand_step(step_inner=50)
+                latter_obj_pose = self.get_interest_object_pose()
+                delta_pos, delta_angle = np_get_delta_pose(
+                    init_obj_pose, latter_obj_pose
+                )
+                succ_flag = (delta_pos < trans_thre) & (delta_angle < angle_thre)
+                if not succ_flag:
+                    break
+            if not succ_flag:
+                break
+        return succ_flag
+
+    def test_mocap_slide(
+        self, grasp_qpos, squeeze_qpos, trans_thre, angle_thre, move_cfg, step
+    ):
+        squeeze_pose_lst = np_interp_slide(grasp_qpos[:7], squeeze_qpos[:7], step)
+        squeeze_qpos_lst = np_interp_qpos(grasp_qpos, squeeze_qpos, step=step)
+        target_pose = np.copy(squeeze_qpos[:7])
+        target_pose[:3] += move_cfg["axis"] * move_cfg["distance"]
+        move_pose_lst = np_interp_slide(squeeze_qpos[:7], target_pose, step)
+        move_qpos_lst = [squeeze_qpos] * step
 
         self.reset_qpos(grasp_qpos)
-        obj_pose_lst = np_interpolate_pose(
-            pose1=self.get_interest_rigid_object_pose(),
-            move_type=move_cfg["type"],
-            move_pos=move_cfg["pos"],
-            move_axis=move_cfg["axis"],
-            move_dist=move_cfg["distance"],
-        )
-        if move_cfg["type"] == "slide":
-            extforce_lst = [0.1 * move_cfg["axis"]] * len(obj_pose_lst)
-        elif move_cfg["type"] == "hinge":
-            extforce_lst = [
-                -np.cross(move_cfg["axis"], p[:3] - move_cfg["pos"])
-                for p in move_pose_lst
-            ]
+        initial_obj_pose = np.copy(self.get_interest_object_pose())
+        target_obj_pose = np.copy(initial_obj_pose)
+        target_obj_pose[:3] += move_cfg["axis"] * move_cfg["distance"]
+        obj_pose_lst = np_interp_slide(initial_obj_pose, target_obj_pose, step)
+        extforce_lst = [move_cfg["axis"] * self.get_interest_object_gravity()] * step
 
         self.control_hand_with_lst(squeeze_pose_lst, squeeze_qpos_lst)
         self.control_hand_with_lst(move_pose_lst, move_qpos_lst, extforce_lst)
 
         for _ in range(5):
             self.control_hand_step(step_inner=50)
-            latter_obj_pose = self.get_interest_rigid_object_pose()
+            latter_obj_pose = self.get_interest_object_pose()
+            delta_pos, delta_angle = np_get_delta_pose(
+                obj_pose_lst[-1], latter_obj_pose
+            )
+            succ_flag = (delta_pos < trans_thre) & (delta_angle < angle_thre)
+            if not succ_flag:
+                break
+        return succ_flag
+
+    def test_mocap_hinge(
+        self, grasp_qpos, squeeze_qpos, trans_thre, angle_thre, move_cfg, step
+    ):
+        squeeze_pose_lst = np_interp_slide(grasp_qpos[:7], squeeze_qpos[:7], step)
+        squeeze_qpos_lst = np_interp_qpos(grasp_qpos, squeeze_qpos, step=step)
+        move_pose_lst = np_interp_hinge(
+            pose1=squeeze_qpos[:7],
+            hinge_pos=move_cfg["pos"],
+            hinge_axis=move_cfg["axis"],
+            move_angle=move_cfg["distance"],
+            step=step,
+        )
+        move_qpos_lst = [squeeze_qpos] * step
+
+        self.reset_qpos(grasp_qpos)
+        obj_pose_lst = np_interp_hinge(
+            pose1=self.get_interest_object_pose(),
+            hinge_pos=move_cfg["pos"],
+            hinge_axis=move_cfg["axis"],
+            move_angle=move_cfg["distance"],
+            step=step,
+        )
+        extforce_lst = [
+            -np.cross(move_cfg["axis"], np_normalize_vector(p[:3] - move_cfg["pos"]))
+            * self.get_interest_object_gravity()
+            for p in move_pose_lst
+        ]
+
+        self.control_hand_with_lst(squeeze_pose_lst, squeeze_qpos_lst)
+        self.control_hand_with_lst(move_pose_lst, move_qpos_lst, extforce_lst)
+
+        for _ in range(5):
+            self.control_hand_step(step_inner=50)
+            latter_obj_pose = self.get_interest_object_pose()
             delta_pos, delta_angle = np_get_delta_pose(
                 obj_pose_lst[-1], latter_obj_pose
             )
@@ -622,7 +704,7 @@ class MuJoCo_RobotFK:
                     )
                 else:
                     raise NotImplementedError(
-                        f"Unsupported mujoco primitive type: {geom.type}"
+                        f"Unsupported mujoco primitive type: {geom.type}. Available choices: 2(icosphere), 3(capsule), 5(cylinder), 6(box)."
                     )
             else:  # Meshes
                 mjm = self.model.mesh(mesh_id)

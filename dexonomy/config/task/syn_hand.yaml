@@ -10,7 +10,6 @@ grasp:
   qp_filter:
     threshold: 0.001
     miu_coef: [0.6, 0.02]
-    force_closure: ${force_closure}
   
 pregrasp:
   outer_iter: 20

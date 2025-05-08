@@ -54,7 +54,7 @@ def _qp_filter(
     contact_wrench, wrench_error = ContactQP(miu_coef=filter_config.miu_coef).solve(
         contact_pos,
         contact_normal,
-        ext_wrench * (1.0 if not filter_config.force_closure else 0.0),
+        ext_wrench,
         ext_center,
     )
     if wrench_error > filter_config.threshold:

@@ -12,7 +12,6 @@ template_name: "**"
 obj_name: "**"
 data_name: '**'
 
-force_closure: True
 update_template: "nearest"   # Choices: False, "body", "nearest", "arbi"
 max_template_evolution: 2
 max_template_buffer: 1024

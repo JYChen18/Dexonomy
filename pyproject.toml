@@ -10,7 +10,7 @@ authors = [{name = "Jiayi Chen", email = "jiayichen@pku.edu.cn"}]
 dependencies = [
     "numpy==1.26.4",
     "warp-lang==1.6.2",
-    "mujoco==3.2.6",
+    "mujoco==3.3.2",
     "trimesh[easy]==4.5.3",
     "matplotlib==3.8.0",
     "imageio==2.37.0",

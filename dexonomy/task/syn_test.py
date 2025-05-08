@@ -27,30 +27,13 @@ def _single_validation(params):
         debug_viewer=configs.debug_viewer,
     )
 
-    if grasp_data["scene_cfg"]["task"]["type"] == "force_closure":
-        grasp_data["scene_cfg"]["task"]["type"] = "slide"
-        external_force_direction = np.array(
-            [[1.0, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]
-        )
-        for i, extforce_direction in enumerate(external_force_direction):
-            grasp_data["scene_cfg"]["task"]["axis"] = extforce_direction
-            succ_flag = sim_env.test_mocap_moving(
-                grasp_data["grasp_qpos"],
-                grasp_data["squeeze_qpos"],
-                task_config.trans_thre,
-                task_config.angle_thre,
-                grasp_data["scene_cfg"]["task"],
-            )
-            if not succ_flag:
-                break
-    else:
-        succ_flag = sim_env.test_mocap_moving(
-            grasp_data["grasp_qpos"],
-            grasp_data["squeeze_qpos"],
-            task_config.trans_thre,
-            task_config.angle_thre,
-            grasp_data["scene_cfg"]["task"],
-        )
+    succ_flag = sim_env.test_mocap(
+        grasp_data["grasp_qpos"],
+        grasp_data["squeeze_qpos"],
+        task_config.trans_thre,
+        task_config.angle_thre,
+        grasp_data["scene_cfg"]["task"],
+    )
 
     sim_env.debug_postprocess(
         save_path=input_npy_path.replace(configs.grasp_dir, configs.debug_dir).replace(

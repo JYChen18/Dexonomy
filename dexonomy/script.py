@@ -20,17 +20,26 @@ def check_stop(test_log_path):
         return True
     return False
 
+
 def check_finish_synobj(obj_log_path):
-    logging.info(f"{obj_log_path}, {os.path.exists(obj_log_path)}")
     if os.path.exists(obj_log_path):
         with open(obj_log_path, "r") as f:
             log_info = f.read()
         if "Finish task syn_obj" in log_info:
+            logging.info(
+                f"The task of syn_obj has finished! Recorded in {obj_log_path}"
+            )
             return True
     return False
 
+
 def run_syn_obj(
-    general_config_str, syn_obj_config_str, template_name, device_id, log_id, obj_log_path
+    general_config_str,
+    syn_obj_config_str,
+    template_name,
+    device_id,
+    log_id,
+    obj_log_path,
 ):
     syn_obj_cmd = f"CUDA_VISIBLE_DEVICES={device_id} python -m dexonomy.main task=syn_obj template_name={template_name} log_id={log_id} {general_config_str} {syn_obj_config_str}"
     logging.info(syn_obj_cmd)
