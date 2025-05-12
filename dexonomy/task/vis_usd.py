@@ -1,7 +1,6 @@
 import os
 import multiprocessing
 from glob import glob
-import trimesh
 import logging
 import omegaconf
 import traceback
@@ -34,7 +33,7 @@ def read_npy(params):
         hand_link_pose = np.stack(hand_link_pose)
 
         hand_pose_lst.append(hand_link_pose)
-
+    data["scene_cfg"]["scene_id"] += "_" + os.path.basename(npy_path)
     return {
         "scene_cfg": data["scene_cfg"],
         "hand_link_pose": np.stack(hand_pose_lst, axis=0),
@@ -107,8 +106,8 @@ def task_vis_usd(configs):
             result_iter = [r for r in list(result_iter) if r is not None]
 
         scene_dict = {}
-        for i, r in enumerate(result_iter):
-            scene_id = r["scene_cfg"]["scene_id"] + f"_{i}"
+        for r in result_iter:
+            scene_id = r["scene_cfg"]["scene_id"]
             if scene_id not in scene_dict:
                 scene_dict[scene_id] = []
             scene_dict[scene_id].append(r)

@@ -6,21 +6,21 @@ rh_palm: [
 ]
 rh_ffproximal: [[0., 0, 0., 0, 0, 0.045]]
 rh_ffmiddle: [[0., 0, 0., 0, 0, 0.025]]
-rh_ffdistal: [[0., 0, 0., 0, 0, 0.01]]
+# rh_ffdistal: [[0., 0, 0., 0, 0, 0.01]]
 
 rh_mfproximal: [[0., 0, 0., 0, 0, 0.045]]
 rh_mfmiddle: [[0., 0, 0., 0, 0, 0.025]]
-rh_mfdistal: [[0., 0, 0., 0, 0, 0.01]]
+# rh_mfdistal: [[0., 0, 0., 0, 0, 0.01]]
 
 rh_rfproximal: [[0., 0, 0., 0, 0, 0.045]]
 rh_rfmiddle: [[0., 0, 0., 0, 0, 0.025]]
-rh_rfdistal: [[0., 0, 0., 0, 0, 0.01]]
+# rh_rfdistal: [[0., 0, 0., 0, 0, 0.01]]
 
 rh_lfproximal: [[0., 0, 0., 0, 0, 0.045]]
 rh_lfmiddle: [[0., 0, 0., 0, 0, 0.025]]
-rh_lfdistal: [[0., 0, 0., 0, 0, 0.01]]
+# rh_lfdistal: [[0., 0, 0., 0, 0, 0.01]]
 rh_lfmetacarpal: [[0.0, 0.0, 0.015, 0.0, 0.0, 0.07]]
 
 rh_thproximal: [[0., 0, 0., 0, 0, 0.04]]
 rh_thmiddle: [[0., 0, 0., 0, 0, 0.03]]
-rh_thdistal: [[0., 0, 0., 0, 0, 0.01]]
+# rh_thdistal: [[0., 0, 0., 0, 0, 0.01]]
