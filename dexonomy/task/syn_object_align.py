@@ -24,22 +24,36 @@ from dexonomy.qp.qp_batched import get_qp_error_batched
 from dexonomy.qp.qp_single import ContactQP
 
 
+def valid_index_padding(parallel_id_lst, valid_idx_bool, num_min, num_max):
+    padded_valid_idx = []
+    for i in range(1 + parallel_id_lst.max()):
+        i_old_valid = torch.where(parallel_id_lst == i)[0]
+        i_new_valid = torch.where(valid_idx_bool & (parallel_id_lst == i))[0]
+        if len(i_new_valid) < num_min:
+            i_other = i_old_valid[~torch.isin(i_old_valid, i_new_valid)]
+            i_new_valid = torch.cat(
+                [
+                    i_new_valid,
+                    i_other[torch.randperm(len(i_other))[: num_min - len(i_new_valid)]],
+                ]
+            )
+        elif len(i_new_valid) > num_max:
+            i_new_valid = i_new_valid[torch.randperm(len(i_new_valid))[:num_max]]
+        padded_valid_idx.extend(i_new_valid)
+    padded_valid_idx = torch.tensor(padded_valid_idx, device=valid_idx_bool.device)
+    return padded_valid_idx
+
+
 class ObjectAligner:
 
-    def __init__(
-        self, device, opt_iter, loss_filter, coll_filter, qp_filter, fps_filter
-    ):
+    def __init__(self, device, opt_iter, filter):
         self.device = device
         self._wp_device = wp.torch.device_from_torch(device)
         self._wp_mesh_cache = {}
         self.buffer_shape = torch.Size([0])
         self.coll_buffer_length = 0
-
-        self.loss_filter = loss_filter
-        self.coll_filter = coll_filter
-        self.qp_filter = qp_filter
-        self.fps_filter = fps_filter
         self.opt_iter = opt_iter
+        self.filter_cfg = filter
         return
 
     def load_warp_mesh(self, collision_mesh_lst):
@@ -121,144 +135,113 @@ class ObjectAligner:
             loss.backward()
             optimizer.step()
 
-        with torch.no_grad():
-            if self.loss_filter.enable:
-                loss_valid_idx = torch.where(
-                    (
-                        loss_normal.view(b * h, n_points).max(dim=-1)[0]
-                        < self.loss_filter.normal_thre
-                    )
-                    & (
-                        loss_dist.view(b * h, n_points).max(dim=-1)[0]
-                        < self.loss_filter.pos_thre
-                    )
-                )[0]
-            else:
-                loss_valid_idx = torch.arange(b * h, device=self.device)
-            logging.debug(
-                f"Loss filtering remain {loss_valid_idx.shape[0]} out of {b * h}"
-            )
-            parallel_id_lst = loss_valid_idx // h
+        # Post processing
+        sof_nf_quat = torch_normalize_vector(opt_q)
+        sof_nf_rot = torch_quaternion_to_matrix(sof_nf_quat)
+        sof_nf_trans = opt_t.view(b, h, 1, 3) * obj_scale
 
-            sof_nf_quat = torch_normalize_vector(opt_q)
-            sof_nf_rot = torch_quaternion_to_matrix(sof_nf_quat)
-            sof_nf_trans = opt_t.view(b, h, 1, 3) * obj_scale
+        wf_sof_rot = torch_quaternion_to_matrix(wf_sof_pose[..., 3:]).view(b, 1, 3, 3)
+        wf_sof_trans = wf_sof_pose[..., :3].view(b, 1, 1, 3)
 
-            wf_sof_rot = torch_quaternion_to_matrix(wf_sof_pose[..., 3:]).view(
-                b, 1, 3, 3
-            )
-            wf_sof_trans = wf_sof_pose[..., :3].view(b, 1, 1, 3)
-
-            wf_nf_rot, wf_nf_trans = torch_pose_multiply(
-                wf_sof_rot, wf_sof_trans, sof_nf_rot, sof_nf_trans
-            )
-
-            wf_hc = torch_transform_points(of_hc, wf_sof_rot, wf_sof_trans, obj_scale)
-            wf_op = torch_transform_points(of_op, wf_sof_rot, wf_sof_trans, obj_scale)
-            wf_on = torch_transform_points(of_on, wf_sof_rot)
-
-            wf_hf_rot, wf_hf_trans = torch_pose_multiply(
-                wf_nf_rot,
-                wf_nf_trans,
-                nf_hf_rot,
-                nf_hf_trans.unsqueeze(-2),
-            )
-
-            result_dict = {
-                "grasp_pose": torch.cat(
-                    [wf_hf_trans.squeeze(-2), torch_matrix_to_quaternion(wf_hf_rot)],
-                    dim=-1,
-                ).view(b * h, 7)[loss_valid_idx],
-                "hand_contacts": wf_hc.view(b * h, -1, 6)[loss_valid_idx],
-                "grasp_qpos": grasp_qpos.view(b * h, -1)[loss_valid_idx],
-                "hand_evolution_num": hand_evolution_num.view(b * h)[loss_valid_idx],
-                "obj_cp": wf_op.view(b * h, -1, 3)[loss_valid_idx],
-                "obj_cn": wf_on.view(b * h, -1, 3)[loss_valid_idx],
-                "obj_scale": obj_scale.repeat(1, h, 1, 1).view(b * h, 3)[
-                    loss_valid_idx
-                ],
-                "collision_mesh_id": collision_mesh_id[parallel_id_lst],
-                "parallel_id_lst": parallel_id_lst,
-                "obj_pose": wf_sof_pose.repeat_interleave(h, dim=0)[loss_valid_idx],
-                "ext_center": wf_ext_center.repeat_interleave(h, dim=0)[loss_valid_idx],
-                "ext_wrench": wf_ext_wrench.repeat_interleave(h, dim=0)[loss_valid_idx],
-            }
-
-        remain_number = loss_valid_idx.shape[0]
-        if remain_number == 0:
-            return result_dict
-
-        if self.coll_filter["enable"]:
-            coll_valid_idx = self.collision_based_filter(
-                hf_hsk.view(b * h, -1, 3)[loss_valid_idx],
-                result_dict["grasp_pose"],
-                result_dict["obj_pose"],
-                result_dict["obj_scale"],
-                result_dict["collision_mesh_id"],
-                (
-                    collision_plane[parallel_id_lst]
-                    if collision_plane is not None
-                    else None
-                ),
-            )
-            for k, v in result_dict.items():
-                result_dict[k] = v[coll_valid_idx]
-            logging.debug(
-                f"Collision filtering remain {coll_valid_idx.sum()} out of {remain_number}"
-            )
-            remain_number = coll_valid_idx.sum()
-            if remain_number == 0:
-                return result_dict
-
-        if self.qp_filter["enable"]:
-            qp_valid_idx = self.qp_based_filter(
-                result_dict["obj_cp"],
-                result_dict["obj_cn"],
-                result_dict["ext_wrench"],
-                result_dict["ext_center"],
-            )
-            for k, v in result_dict.items():
-                result_dict[k] = v[qp_valid_idx]
-            logging.debug(
-                f"QP filtering remain {qp_valid_idx.sum()} out of {remain_number}"
-            )
-            remain_number = qp_valid_idx.sum()
-            if remain_number == 0:
-                return result_dict
-
-        if self.fps_filter["enable"]:
-            fps_valid_idx = self.fps_based_filter(
-                result_dict["obj_cp"],
-                result_dict["obj_pose"],
-                result_dict["parallel_id_lst"],
-                self.fps_filter["max_num"],
-                self.fps_filter["min_dist"],
-            )
-        else:
-            fps_valid_idx = torch.randperm(len(result_dict["parallel_id_lst"]))[
-                : self.fps_filter["max_num"]
-            ]
-        for k, v in result_dict.items():
-            result_dict[k] = v[fps_valid_idx]
-        logging.debug(
-            f"FPS filtering remain {fps_valid_idx.sum()} out of {remain_number}"
+        wf_nf_rot, wf_nf_trans = torch_pose_multiply(
+            wf_sof_rot, wf_sof_trans, sof_nf_rot, sof_nf_trans
         )
 
-        for k, v in result_dict.items():
-            result_dict[k] = v.detach().cpu().numpy()
+        wf_hc = torch_transform_points(of_hc, wf_sof_rot, wf_sof_trans, obj_scale)
+        wf_op = torch_transform_points(of_op, wf_sof_rot, wf_sof_trans, obj_scale)
+        wf_on = torch_transform_points(of_on, wf_sof_rot)
 
+        wf_hf_rot, wf_hf_trans = torch_pose_multiply(
+            wf_nf_rot,
+            wf_nf_trans,
+            nf_hf_rot,
+            nf_hf_trans.unsqueeze(-2),
+        )
+
+        result_dict = {
+            "grasp_pose": torch.cat(
+                [wf_hf_trans.squeeze(-2), torch_matrix_to_quaternion(wf_hf_rot)],
+                dim=-1,
+            ).view(b * h, 7),
+            "hand_contacts": wf_hc.view(b * h, -1, 6),
+            "hand_skeleton": hf_hsk.view(b * h, -1, 3),
+            "grasp_qpos": grasp_qpos.view(b * h, -1),
+            "hand_evolution_num": hand_evolution_num.view(b * h),
+            "obj_cp": wf_op.view(b * h, -1, 3),
+            "obj_cn": wf_on.view(b * h, -1, 3),
+            "obj_scale": obj_scale.repeat(1, h, 1, 1).view(b * h, 3),
+            "parallel_id_lst": torch.arange(b * h, device=self.device) // h,
+            "obj_pose": wf_sof_pose.repeat_interleave(h, dim=0),
+            "ext_center": wf_ext_center.repeat_interleave(h, dim=0),
+            "ext_wrench": wf_ext_wrench.repeat_interleave(h, dim=0),
+        }
+
+        # Filtering
+        result_dict = self.wrapped_filter(
+            result_dict,
+            "loss_based",
+            3,
+            loss_normal=loss_normal.view(b * h, -1),
+            loss_dist=loss_dist.view(b * h, -1),
+        )
+        result_dict = self.wrapped_filter(
+            result_dict,
+            "collision_based",
+            2,
+            collision_plane=collision_plane,
+            collision_mesh_id=collision_mesh_id,
+        )
+        result_dict = self.wrapped_filter(result_dict, "qp_based", 1)
+        result_dict = self.wrapped_filter(result_dict, "fps_based", 0)
         return result_dict
 
     @torch.no_grad()
-    def collision_based_filter(
-        self,
-        handframe_skeleton: torch.Tensor,
-        grasp_pose: torch.Tensor,
-        obj_pose: torch.Tensor,
-        obj_scale: torch.Tensor,
-        collision_mesh_id,
-        collision_plane,
-    ):
+    def wrapped_filter(self, result_dict, filter_name, later_filter_num, **kwargs):
+        old_valid_num = len(result_dict["parallel_id_lst"])
+        if self.filter_cfg[filter_name]["enable"]:
+            valid_idx_bool = eval(f"self.{filter_name}_filter")(result_dict, **kwargs)
+        else:
+            valid_idx_bool = torch.ones(old_valid_num, dtype=bool, device=self.device)
+        num_min = int(
+            self.filter_cfg.final_num
+            / ((1 - self.filter_cfg.min_ratio) ** later_filter_num)
+        )
+        num_max = int(
+            self.filter_cfg.final_num
+            / ((1 - self.filter_cfg.max_ratio) ** later_filter_num)
+        )
+        new_valid_idx = valid_index_padding(
+            result_dict["parallel_id_lst"],
+            valid_idx_bool,
+            num_min,
+            num_max,
+        )
+        for k, v in result_dict.items():
+            result_dict[k] = v[new_valid_idx]
+        logging.debug(
+            f"{filter_name} filtering remain {len(new_valid_idx)} out of {old_valid_num}"
+        )
+        return result_dict
+
+    def loss_based_filter(self, result_dict, loss_normal, loss_dist):
+        loss_valid_idx = (
+            loss_normal.max(dim=-1)[0] < self.filter_cfg["loss_based"].normal_thre
+        ) & (loss_dist.max(dim=-1)[0] < self.filter_cfg["loss_based"].pos_thre)
+        return loss_valid_idx
+
+    def collision_based_filter(self, result_dict, collision_plane, collision_mesh_id):
+        handframe_skeleton, grasp_pose, obj_pose, obj_scale, collision_mesh_id = (
+            result_dict["hand_skeleton"],
+            result_dict["grasp_pose"],
+            result_dict["obj_pose"],
+            result_dict["obj_scale"],
+            collision_mesh_id[result_dict["parallel_id_lst"]],
+        )
+        collision_plane = (
+            collision_plane[result_dict["parallel_id_lst"]]
+            if collision_plane is not None
+            else None
+        )
         query_shape = grasp_pose.shape[0]
         if self.coll_buffer_length < query_shape:
             self.coll_buffer_length = query_shape
@@ -290,17 +273,24 @@ class ObjectAligner:
         )
         return out_valid_idx
 
-    @torch.no_grad()
-    def qp_based_filter(self, obj_points, obj_normals, ext_wrench, ext_center):
-        miu_coef = self.qp_filter["miu_coef"]
+    def qp_based_filter(self, result_dict):
+        obj_points, obj_normals, ext_wrench, ext_center = (
+            result_dict["obj_cp"],
+            result_dict["obj_cn"],
+            result_dict["ext_wrench"],
+            result_dict["ext_center"],
+        )
+
+        qp_cfg = self.filter_cfg["qp_based"]
+        miu_coef = qp_cfg["miu_coef"]
         qp_error = torch.ones(
             obj_points.shape[0], dtype=torch.float32, device=self.device
         )
-        if self.qp_filter["batched"]:
+        if qp_cfg["batched"]:
             logging.debug(
-                f"qp shape: {obj_points.shape} {self.qp_filter['max_batch_size']}"
+                f"qp shape: {obj_points.shape} {self.filter_cfg['qp_based']['max_batch_size']}"
             )
-            max_batch_size = self.qp_filter["max_batch_size"] // obj_points.shape[-2]
+            max_batch_size = qp_cfg["max_batch_size"] // obj_points.shape[-2]
             batch_num = math.ceil(obj_points.shape[0] / max_batch_size)
             for i in range(batch_num):
                 start = i * max_batch_size
@@ -323,13 +313,13 @@ class ObjectAligner:
                     ext_center[i].cpu().numpy(),
                 )
 
-        out_valid_idx = qp_error < self.qp_filter["threshold"]
+        out_valid_idx = qp_error < qp_cfg["threshold"]
         return out_valid_idx
 
-    @torch.no_grad()
-    def fps_based_filter(
-        self, obj_points, obj_pose, parallel_id_lst, max_num, min_dist
-    ):
+    def fps_based_filter(self, result_dict):
+        obj_points = result_dict["obj_cp"]
+        obj_pose = result_dict["obj_pose"]
+        parallel_id_lst = result_dict["parallel_id_lst"]
         of_op = torch_inv_transform_points(
             obj_points,
             torch_quaternion_to_matrix(obj_pose[..., 3:]),
@@ -353,7 +343,7 @@ class ObjectAligner:
             rand_start = random.randint(0, all_points.shape[0] - 1)
             valid_points = all_points[rand_start].unsqueeze(0)
             out_valid_idx[corr_index[k][rand_start]] = True
-            for i in range(min(len(all_points), max_num - 1)):
+            for i in range(min(len(all_points), self.filter_cfg.final_num - 1)):
                 farthest_dist, farthest_id = (
                     (valid_points.unsqueeze(0) - all_points.unsqueeze(1))
                     .norm(dim=-1)
@@ -361,8 +351,6 @@ class ObjectAligner:
                     .min(dim=-1)[0]
                     .max(dim=-1)
                 )
-                if farthest_dist < min_dist:
-                    break
                 valid_points = torch.cat(
                     [valid_points, all_points[farthest_id].unsqueeze(0)], dim=0
                 )
@@ -450,6 +438,9 @@ def task_syn_obj(configs):
                 logging.info(f"Get {succ_num} valid")
                 if succ_num == 0:
                     continue
+
+                for k, v in result_dict.items():
+                    result_dict[k] = v.cpu().numpy()
 
                 for count, (
                     grasp_pose,

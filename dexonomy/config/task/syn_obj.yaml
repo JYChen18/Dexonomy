@@ -10,21 +10,24 @@ object:
 
 matcher:
   opt_iter: 100
-  loss_filter:
-    enable: True
-    pos_thre: 0.001
-    normal_thre: 0.3
-  coll_filter: 
-    enable: False
-  qp_filter: 
-    enable: True
-    batched: True
-    max_batch_size: 30000 
-    threshold: 0.01
-    miu_coef: [0.2, 0.001]    # This should be small to leave more high-quality grasps
-  fps_filter:
-    enable: True
-    max_num: 10
-    min_dist: 0.02
+  filter:
+    final_num: 10
+    min_ratio: 0.5
+    max_ratio: 0.9
+    loss_based:
+      enable: True
+      pos_thre: 0.001
+      normal_thre: 0.3
+    collision_based: 
+      enable: True
+    qp_based: 
+      enable: True
+      batched: True
+      max_batch_size: 30000
+      threshold: 0.01
+      miu_coef: [0.2, 0.001]    # This should be small to leave more high-quality grasps
+    fps_based:
+      enable: True
+    
 
 cust_log_dir: ${log_dir}
