@@ -82,8 +82,10 @@ def task_vis_3d(configs):
     task_config = configs.task
     if task_config.data_type == "init_template":
         data_folder = configs.init_template_dir
-        input_path_example = os.path.join(data_folder, configs.template_name + ".npy")
+        input_path_example = os.path.join(data_folder, "**.npy")
         input_path_lst = glob(input_path_example)
+        if configs.debug_name is not None:
+            input_path_lst = [p for p in input_path_lst if configs.debug_name in p]
     else:
         if task_config.data_type == "grasp":
             data_folder, check_folder = configs.grasp_dir, configs.succ_dir
@@ -97,22 +99,29 @@ def task_vis_3d(configs):
             raise NotImplementedError(
                 f"Valid choices: 'grasp', 'init', 'succ', 'init_template', 'new_template'. Current: '{task_config.data_type}' "
             )
-        input_path_example = os.path.join(
-            data_folder,
-            configs.template_name,
-            configs.obj_name,
-            configs.data_name + ".npy",
-        )
-        input_path_lst = glob(input_path_example)
+        input_path_lst = glob(os.path.join(data_folder, "**/**.npy"), recursive=True)
+        if configs.debug_name is not None:
+            input_path_lst = [p for p in input_path_lst if configs.debug_name in p]
+
         if check_folder is not None and task_config.check_success is not None:
-            check_path_lst = glob(input_path_example.replace(data_folder, check_folder))
+            check_path_lst = glob(
+                os.path.join(check_folder, "**/**.npy"), recursive=True
+            )
+            if configs.debug_name is not None:
+                check_path_lst = [p for p in check_path_lst if configs.debug_name in p]
+            check_path_lst = [
+                p.replace(check_folder, data_folder) for p in check_path_lst
+            ]
+
             if task_config.check_success:
                 input_path_lst = list(set(input_path_lst).difference(check_path_lst))
             elif not task_config.check_success:
                 input_path_lst = list(set(input_path_lst).intersection(check_path_lst))
     if configs.task.max_num > 0 and len(input_path_lst) > configs.task.max_num:
         input_path_lst = np.random.permutation(input_path_lst)[: configs.task.max_num]
-    logging.info(f"Find {len(input_path_lst)} data for {input_path_example}")
+    logging.info(
+        f"Find {len(input_path_lst)} data for {input_path_example}. Debug name: {configs.debug_name}"
+    )
 
     kin = MuJoCo_RobotFK(configs.hand.xml_path, vis_mesh_mode=task_config.hand.mode)
     if task_config.hand.init_body:

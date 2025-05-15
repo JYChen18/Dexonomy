@@ -1,6 +1,9 @@
 from typing import Dict, Union
 import json
 from ruamel.yaml import YAML
+import numpy as np
+import os
+import omegaconf
 
 YAML_LOADER = YAML()
 YAML_LOADER.allow_duplicate_keys = False
@@ -34,17 +37,6 @@ def load_yaml(file_path: Union[str, Dict]) -> Dict:
     return yaml_params
 
 
-def write_yaml(data: Dict, file_path: str):
-    """Write dictionary to yaml file.
-
-    Args:
-        data: Dictionary to write to yaml file.
-        file_path: Path to write the yaml file.
-    """
-    with open(file_path, "w") as file:
-        yaml.dump(data, file)
-
-
 def load_json(file_path):
     if isinstance(file_path, str):
         with open(file_path) as file_p:
@@ -57,3 +49,35 @@ def load_json(file_path):
 def write_json(data: Dict, file_path):
     with open(file_path, "w") as file:
         json.dump(data, file, indent=1)
+
+
+def get_template_name_lst(template_name, init_template_dir):
+    all_template_lst = [f.split(".npy")[0] for f in os.listdir(init_template_dir)]
+    if template_name is None:
+        hand_template_names = all_template_lst
+    elif isinstance(template_name, omegaconf.listconfig.ListConfig):
+        hand_template_names = list(template_name)
+        for tn in hand_template_names:
+            assert tn in all_template_lst
+    elif isinstance(template_name, str):
+        assert template_name in all_template_lst
+        hand_template_names = [template_name]
+    else:
+        raise NotImplementedError(f"Undefined type of template_name: {template_name}")
+    return hand_template_names
+
+
+def load_scene_cfg(scene_path):
+    scene_cfg = np.load(scene_path, allow_pickle=True).item()
+
+    def update_relative_path(d: dict):
+        for k, v in d.items():
+            if isinstance(v, dict):
+                update_relative_path(v)
+            elif k.endswith("_path") and isinstance(v, str):
+                d[k] = os.path.join(os.path.dirname(scene_path), v)
+        return
+
+    update_relative_path(scene_cfg["scene"])
+
+    return scene_cfg

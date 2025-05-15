@@ -387,7 +387,7 @@ def task_syn_obj(configs):
                     check_dir = os.path.join(
                         configs.init_dir,
                         configs.template_name,
-                        scene_cfg["scene_id"].replace("/", "_"),
+                        scene_cfg["scene_id"],
                         f"{eee}**.npy",
                     )
                     if len(glob(check_dir)) > 0:
@@ -467,10 +467,11 @@ def task_syn_obj(configs):
                 ):
 
                     scene_cfg = obj_samples["scene_cfg"][obj_id]
+                    scene_path = obj_samples["scene_path"][obj_id]
                     grasp_dir = os.path.join(
                         configs.init_dir,
                         hand_temp_dict["hand_template_name"],
-                        scene_cfg["scene_id"].replace("/", "_"),
+                        scene_cfg["scene_id"],
                     )
                     os.makedirs(grasp_dir, exist_ok=True)
 
@@ -492,7 +493,7 @@ def task_syn_obj(configs):
                             "obj_worldframe_contacts": obj_worldframe_contacts,
                             "ext_center": ext_center,
                             "ext_wrench": ext_wrench,
-                            "scene_cfg": scene_cfg,
+                            "scene_path": scene_path,
                         },
                     )
         logging.info("Finish task syn_obj.")

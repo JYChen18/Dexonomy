@@ -6,6 +6,7 @@ import omegaconf
 import logging
 
 from concurrent.futures import ProcessPoolExecutor
+from dexonomy.util.file_util import get_template_name_lst
 
 
 def check_stop(test_log_path):
@@ -99,17 +100,9 @@ def run_together(configs):
             override_config[k] = "'" + "' '".join(v) + "'"
 
     # read hand template names
-    if configs.template_name == "**" or configs.template_name is None:
-        hand_template_names = [
-            f.split(".npy")[0] for f in os.listdir(configs.init_template_dir)
-        ]
-    elif isinstance(configs.template_name, omegaconf.listconfig.ListConfig):
-        hand_template_names = list(configs.template_name)
-    elif isinstance(configs.template_name, str):
-        hand_template_names = [configs.template_name]
-    else:
-        raise NotImplementedError(f"Undefined template_name: {configs.template_name}")
-
+    hand_template_names = get_template_name_lst(
+        configs.template_name, configs.init_template_dir
+    )
     assert len(hand_template_names) <= len(
         configs.gpu_list
     ), f"Template number: {len(hand_template_names)}; GPU number: {len(configs.gpu_list)}"

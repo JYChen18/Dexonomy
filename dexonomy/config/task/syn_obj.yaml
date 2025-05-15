@@ -5,8 +5,9 @@ object:
   batch_size: 10
   init_point_num: 1024
   init_inplane_num: 8
-  cfg_path: ${asset_root}/object/DGN_5k/processed_data/**/scene_cfg/floating/**.npy
+  cfg_path: ${asset_root}/object/DGN_5k/scene_cfg/**/floating/**.npy
   cfg_num: 100
+  mass: ${obj_mass}
 
 matcher:
   opt_iter: 100

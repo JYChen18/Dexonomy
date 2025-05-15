@@ -8,13 +8,14 @@ gpu_list: [1,2,3]  # only used for CSample
 
 debug_viewer: False
 debug_render: False
-template_name: "**"
-obj_name: "**"
-data_name: '**'
+debug_name: ""
 
+template_name: 
 update_template: "nearest"   # Choices: False, "body", "nearest", "arbi"
 max_template_evolution: 2
 max_template_buffer: 1024
+
+obj_mass: 0.1 # unit: kg
 
 # Path for hand annotation
 raw_anno_dir: ${asset_root}/hand/${hand_name}/raw_anno

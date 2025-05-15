@@ -30,13 +30,13 @@ python -m dexonomy.main task=syn_hand hand=allegro exp_name=first_try
 
 #### Debugging Options
 ```bash
-python -m dexonomy.main task=syn_hand hand=allegro exp_name=first_try skip=False template_name=fingertip_small obj_name=floating_core_bottle_523cddb320608c09a37f3fc191551700_scale005 data_name=0_1_grasp debug_render=True hydra.verbose=true 
+python -m dexonomy.main task=syn_hand hand=allegro exp_name=first_try skip=False debug_name=core_bottle_523cddb320608c09a37f3fc191551700 debug_render=True hydra.verbose=true 
 ```
 
 - `debug_render=True`: Render the refinement process and save GIFs to `debug_dir` (default: `output/first_try_allegro/debug`). (Note: if there is an OpenGL-related error, try to first run `export MUJOCO_GL=egl`)
 - `debug_viewer=True`: Open the MuJoCo viewer. (Note: not available on headless devices). 
 - `skip=False`: Re-generate existing graspdata files.
-- `template_name`, `obj_name`, and `data_name`: Specify which initialization files to process. Each argument is optional and can be used independently.
+- `debug_name=core_bottle_523cddb320608c09a37f3fc191551700`: Specify which initialization files to process. Only those path names that  include `debug_name` would be used.
 - `hydra.verbose=true`: Print detailed debug info, such as failure reasons.
 
 All these options are configurable via [dexonomy/config/base.yaml](https://github.com/JYChen18/Dexonomy/blob/main/dexonomy/config/base.yaml)
@@ -84,7 +84,7 @@ python -m dexonomy.main task=vis_usd hand=allegro exp_name=first_try task.max_nu
     - `True`: Only include successful data.
     - `False`: Only include failed data.
     - `None` (default):  Include all samples regardless of success
-- `template_name`, `obj_name`, and `data_name`: Specify which files to run as before.
+- `debug_name`: Specify which files to run as before.
 
 ### 2. `vis_3d`: Visualize Individually in OBJ Formats
 ```bash

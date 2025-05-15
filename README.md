@@ -22,11 +22,10 @@ All starting from just **one** human-annotated template *per hand and grasp type
 #### Supported Features
 - Hands: Shadow, Allegro, Leap, MANO, Inspire, Unitree_G1
 - Object Scenes: Single (floating & tabletop), Clustered (light clutter)
-- Object Assets: ShapeNet, Objaverse
+- Object Assets: Rigid objects (ShapeNet & Objaverse), Articulated objects (PartNet)
 - Physics Simulator: MuJoCo
 
 #### Planned Features
-- Object Assets: Articulated objects
 - Motion Synthesis: cuRobo integration, Simulation testing
 
 
@@ -45,10 +44,13 @@ pip install -e .
 ## Quick Start
 ### 1. Prepare Object Assets 
 
-Download our pre-processed object assets `DGNv2_processed.zip` from [this link](https://disk.pku.edu.cn/link/AA0FA86ED9AC5F4EC2B3BB6AF4100BEEA6), and organize the unzipped folders as below. 
+Download our pre-processed object assets `DGN_5k_processed.zip` from [Hugging Face](https://huggingface.co/datasets/JiayiChenPKU/Dexonomy), and organize the unzipped folders as below. 
 ```
-assets/object/DGN_obj_v2
+assets/object/DGN_5k
 |- processed_data
+|  |- core_bottle_1a7ba1f4c892e2da30711cdbdbc73924
+|  |_ ...
+|- scene_cfg
 |  |- core_bottle_1a7ba1f4c892e2da30711cdbdbc73924
 |  |_ ...
 |- valid_split

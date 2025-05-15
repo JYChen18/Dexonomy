@@ -2,7 +2,6 @@ import os
 import multiprocessing
 from glob import glob
 import logging
-import omegaconf
 import traceback
 
 import numpy as np
@@ -11,6 +10,7 @@ from transforms3d import quaternions as tq
 from dexonomy.sim import MuJoCo_RobotFK
 from dexonomy.util.usd_helper import UsdHelper, Material
 from dexonomy.util.vis_util import scene_cfg2mesh
+from dexonomy.util.file_util import get_template_name_lst
 
 
 def read_npy(params):
@@ -53,16 +53,12 @@ def task_vis_usd(configs):
     kin = MuJoCo_RobotFK(configs.hand.xml_path, vis_mesh_mode=configs.task.hand.mode)
     init_robot_name_lst, init_robot_mesh_lst = kin.get_init_body_meshes()
 
-    if configs.template_name == "**":
-        temp_name_lst = [
-            p.removesuffix(".npy") for p in os.listdir(configs.init_template_dir)
-        ]
-    elif isinstance(configs.template_name, omegaconf.listconfig.ListConfig):
-        temp_name_lst = configs.template_name
-    elif isinstance(configs.template_name, str):
-        temp_name_lst = [configs.template_name]
+    if not os.path.exists(configs.init_dir):
+        tmp_lst = get_template_name_lst(None, configs.grasp_dir)
+    else:
+        tmp_lst = get_template_name_lst(None, configs.init_template_dir)
 
-    for temp_name in temp_name_lst:
+    for temp_name in tmp_lst:
         usd_helper = UsdHelper()
 
         task_config = configs.task
@@ -75,16 +71,23 @@ def task_vis_usd(configs):
         elif task_config.data_type == "new_template":
             data_folder, check_folder = configs.new_template_dir, None
         else:
-            raise NotImplementedError
-        input_path_example = os.path.join(
-            data_folder,
-            temp_name,
-            configs.obj_name,
-            configs.data_name + ".npy",
-        )
-        input_path_lst = glob(input_path_example)
+            raise NotImplementedError(
+                f"Valid choices: 'grasp', 'init', 'succ', 'init_template', 'new_template'. Current: '{task_config.data_type}' "
+            )
+        input_path_lst = glob(os.path.join(data_folder, "**/**.npy"), recursive=True)
+        if configs.debug_name is not None:
+            input_path_lst = [p for p in input_path_lst if configs.debug_name in p]
+
         if check_folder is not None and task_config.check_success is not None:
-            check_path_lst = glob(input_path_example.replace(data_folder, check_folder))
+            check_path_lst = glob(
+                os.path.join(check_folder, "**/**.npy"), recursive=True
+            )
+            if configs.debug_name is not None:
+                check_path_lst = [p for p in check_path_lst if configs.debug_name in p]
+            check_path_lst = [
+                p.replace(check_folder, data_folder) for p in check_path_lst
+            ]
+
             if task_config.check_success:
                 input_path_lst = list(set(input_path_lst).difference(check_path_lst))
             elif not task_config.check_success:

@@ -4,11 +4,11 @@ import logging
 import glob
 
 import numpy as np
-import transforms3d.quaternions as tq
 
 from dexonomy.qp.qp_single import ContactQP
 from dexonomy.sim import MuJoCo_OptEnv
 from dexonomy.util.np_rot_util import np_array32
+from dexonomy.util.file_util import load_scene_cfg
 
 
 def _collision_filter(ho_contact_lst, hh_contact_lst, filter_config, skip_logging=True):
@@ -78,7 +78,7 @@ def _single_hand_refine(params):
         hand_add_mocap=hand_config.add_mocap,
         hand_exclude_table_contact=hand_config.exclude_table_contact,
         friction_coef=None,
-        scene_cfg=grasp_data["scene_cfg"],
+        scene_cfg=load_scene_cfg(grasp_data["scene_path"]),
         debug_render=configs.debug_render,
         debug_viewer=configs.debug_viewer,
     )
@@ -246,13 +246,10 @@ def _single_hand_refine(params):
 
 def task_syn_hand(configs):
     input_path_lst = glob.glob(
-        os.path.join(
-            configs.init_dir,
-            configs.template_name,
-            configs.obj_name,
-            configs.data_name + ".npy",
-        )
+        os.path.join(configs.init_dir, "**/**.npy"), recursive=True
     )
+    if configs.debug_name is not None:
+        input_path_lst = [p for p in input_path_lst if configs.debug_name in p]
 
     logged_paths = []
     if configs.skip and os.path.exists(configs.log_path):

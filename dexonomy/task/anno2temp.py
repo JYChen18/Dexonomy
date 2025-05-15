@@ -6,7 +6,7 @@ import multiprocessing
 
 import numpy as np
 
-from dexonomy.util.file_util import load_yaml, write_yaml
+from dexonomy.util.file_util import load_yaml
 from dexonomy.sim import MuJoCo_RobotFK
 from dexonomy.util.np_rot_util import (
     np_transform_points,
@@ -132,7 +132,9 @@ def _single_anno2temp(params):
 
 def task_anno2temp(configs):
 
-    input_path_lst = glob(os.path.join(configs.raw_anno_dir, configs.template_name))
+    input_path_lst = glob(os.path.join(configs.raw_anno_dir, "**.yaml"))
+    if configs.debug_name is not None:
+        input_path_lst = [p for p in input_path_lst if configs.debug_name in p]
     input_num = len(input_path_lst)
     logging.info(f"Find {input_num} annotation")
 

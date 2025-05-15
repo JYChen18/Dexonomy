@@ -6,7 +6,7 @@ import glob
 import traceback
 
 from dexonomy.sim import MuJoCo_TestEnv
-from dexonomy.util.file_util import load_json
+from dexonomy.util.file_util import load_scene_cfg, load_json
 
 
 def _single_validation(params):
@@ -16,13 +16,19 @@ def _single_validation(params):
     hand_config = configs.hand
 
     grasp_data = np.load(input_npy_path, allow_pickle=True).item()
+    scene_cfg = load_scene_cfg(grasp_data["scene_path"])
+
+    for obj_name, obj_cfg in scene_cfg["scene"].items():
+        obj_info = load_json(obj_cfg["info_path"])
+        obj_coef = obj_info["mass"] / (obj_info["density"] * (obj_info["scale"] ** 3))
+        obj_cfg["density"] = configs.obj_mass / (obj_coef * np.prod(obj_cfg["scale"]))
 
     sim_env = MuJoCo_TestEnv(
         hand_xml_path=hand_config.xml_path,
         hand_add_mocap=hand_config.add_mocap,
         hand_exclude_table_contact=hand_config.exclude_table_contact,
         friction_coef=task_config.miu_coef,
-        scene_cfg=grasp_data["scene_cfg"],
+        scene_cfg=scene_cfg,
         debug_render=configs.debug_render,
         debug_viewer=configs.debug_viewer,
     )
@@ -32,7 +38,7 @@ def _single_validation(params):
         grasp_data["squeeze_qpos"],
         task_config.trans_thre,
         task_config.angle_thre,
-        grasp_data["scene_cfg"]["task"],
+        scene_cfg["task"],
     )
 
     sim_env.debug_postprocess(
@@ -47,8 +53,8 @@ def _single_validation(params):
             f"ln -s {os.path.relpath(input_npy_path, os.path.dirname(output_npy_path))} {output_npy_path}"
         )
         if (
-            grasp_data["evolution_num"] <= configs.max_template_evolution
-            and configs.update_template is not False
+            configs.update_template is not False
+            and grasp_data["evolution_num"] <= configs.max_template_evolution
         ):
             tmp_npy_path = input_npy_path.replace(
                 configs.grasp_dir, configs.new_template_dir
@@ -72,13 +78,11 @@ def safe_validation(params):
 
 def task_syn_test(configs):
     input_path_lst = glob.glob(
-        os.path.join(
-            configs.grasp_dir,
-            configs.template_name,
-            configs.obj_name,
-            configs.data_name + ".npy",
-        )
+        os.path.join(configs.grasp_dir, "**/**.npy"), recursive=True
     )
+    if configs.debug_name is not None:
+        input_path_lst = [p for p in input_path_lst if configs.debug_name in p]
+
     logged_paths = []
     if configs.skip and os.path.exists(configs.log_path):
         with open(configs.log_path, "r") as f:

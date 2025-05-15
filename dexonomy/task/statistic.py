@@ -6,6 +6,7 @@ import logging
 import matplotlib.pyplot as plt
 import torch
 
+from dexonomy.util.file_util import get_template_name_lst
 from dexonomy.util.torch_rot_util import (
     torch_quaternion_to_matrix,
     torch_matrix_to_axis_angle,
@@ -36,10 +37,10 @@ def draw_obj_scale_fig(data_lst, save_path):
     return
 
 
-def get_obj_name_lst(path_lst):
+def get_obj_name_lst(path_lst, template_name):
     obj_name_lst = []
     for p in path_lst:
-        obj_name = p.split("/")[-2]
+        obj_name = os.path.dirname(p).split(template_name + "/")[1]
         obj_name_lst.append(obj_name)
     return list(set(obj_name_lst))
 
@@ -87,23 +88,29 @@ def get_diversity(data_lst):
 
 
 def task_stat(configs):
-
-    if configs.task.separate_template:
-        tmp_lst = os.listdir(configs.init_dir)
+    if not os.path.exists(configs.init_dir):
+        tmp_lst = get_template_name_lst(None, configs.grasp_dir)
     else:
-        tmp_lst = [configs.template_name]
+        tmp_lst = get_template_name_lst(None, configs.init_template_dir)
 
     # Hand template summary
     for template_name in tmp_lst:
-        all_init_lst = glob(os.path.join(configs.init_dir, template_name, "**/**"))
-        all_grasp_lst = glob(os.path.join(configs.grasp_dir, template_name, "**/**"))
-        all_eval_lst = glob(os.path.join(configs.succ_dir, template_name, "**/**"))
+        all_init_lst = glob(
+            os.path.join(configs.init_dir, template_name, "**/**.npy"), recursive=True
+        )
+        all_grasp_lst = glob(
+            os.path.join(configs.grasp_dir, template_name, "**/**.npy"), recursive=True
+        )
+        all_eval_lst = glob(
+            os.path.join(configs.succ_dir, template_name, "**/**.npy"), recursive=True
+        )
+
         if len(all_eval_lst) + len(all_init_lst) + len(all_grasp_lst) == 0:
             continue
 
-        init_obj_lst = get_obj_name_lst(all_init_lst)
-        grasp_obj_lst = get_obj_name_lst(all_grasp_lst)
-        succ_obj_lst = get_obj_name_lst(all_eval_lst)
+        init_obj_lst = get_obj_name_lst(all_init_lst, template_name)
+        grasp_obj_lst = get_obj_name_lst(all_grasp_lst, template_name)
+        succ_obj_lst = get_obj_name_lst(all_eval_lst, template_name)
 
         if len(all_eval_lst) != 0 and (
             configs.task.scale_fig
@@ -129,7 +136,7 @@ def task_stat(configs):
                 )
 
         header = "{:<20} | {:<10} | {:<10} | {:<10}".format(
-            template_name, "CSample", "MJOpt", "MJTest"
+            template_name, "SynObj", "SynHand", "Test"
         )
         success_line = "{:<20} | {:<10} | {:<10} | {:<10}".format(
             "Grasp:",

@@ -137,7 +137,10 @@ class HandTemplateLibrary:
                 template_lst = []
             else:
                 template_lst = glob(
-                    os.path.join(self.new_template_dir, self.template_name, "**/**.npy")
+                    os.path.join(
+                        self.new_template_dir, self.template_name, "**/**.npy"
+                    ),
+                    recursive=True,
                 )
             template_lst.append(
                 os.path.join(self.init_template_dir, self.template_name + ".npy")
