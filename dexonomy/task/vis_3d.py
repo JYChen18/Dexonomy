@@ -7,7 +7,7 @@ import multiprocessing
 
 from dexonomy.sim import MuJoCo_RobotFK
 from dexonomy.util.vis_util import get_arrow_mesh, get_line_mesh, scene_cfg2mesh
-from dexonomy.util.file_util import load_yaml
+from dexonomy.util.file_util import load_yaml, load_scene_cfg
 
 
 def _single_visd(params):
@@ -30,7 +30,8 @@ def _single_visd(params):
 
     # Object
     if task_config.data_type != "init_template":
-        obj_tm = scene_cfg2mesh(grasp_data["scene_cfg"])
+        scene_cfg = load_scene_cfg(grasp_data["scene_path"])
+        obj_tm = scene_cfg2mesh(scene_cfg)
         if task_config.object.contact:
             point_mesh, arrow_mesh = get_arrow_mesh(
                 grasp_data["obj_worldframe_contacts"][:, :3],
@@ -82,8 +83,7 @@ def task_vis_3d(configs):
     task_config = configs.task
     if task_config.data_type == "init_template":
         data_folder = configs.init_template_dir
-        input_path_example = os.path.join(data_folder, "**.npy")
-        input_path_lst = glob(input_path_example)
+        input_path_lst = glob(os.path.join(data_folder, "**.npy"))
         if configs.debug_name is not None:
             input_path_lst = [p for p in input_path_lst if configs.debug_name in p]
     else:
@@ -120,7 +120,7 @@ def task_vis_3d(configs):
     if configs.task.max_num > 0 and len(input_path_lst) > configs.task.max_num:
         input_path_lst = np.random.permutation(input_path_lst)[: configs.task.max_num]
     logging.info(
-        f"Find {len(input_path_lst)} data for {input_path_example}. Debug name: {configs.debug_name}"
+        f"Find {len(input_path_lst)} in {data_folder}. Debug name: {configs.debug_name}. Check success: {task_config.check_success}"
     )
 
     kin = MuJoCo_RobotFK(configs.hand.xml_path, vis_mesh_mode=task_config.hand.mode)

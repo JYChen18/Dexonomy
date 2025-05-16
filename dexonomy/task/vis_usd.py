@@ -10,13 +10,14 @@ from transforms3d import quaternions as tq
 from dexonomy.sim import MuJoCo_RobotFK
 from dexonomy.util.usd_helper import UsdHelper, Material
 from dexonomy.util.vis_util import scene_cfg2mesh
-from dexonomy.util.file_util import get_template_name_lst
+from dexonomy.util.file_util import get_template_name_lst, load_scene_cfg
 
 
 def read_npy(params):
     npy_path, kin, task_config = params[0], params[1], params[2]
 
     data = np.load(npy_path, allow_pickle=True).item()
+    scene_cfg = load_scene_cfg(data["scene_path"])
 
     hand_pose_lst = []
     for qpos_name in task_config.qpos_type:
@@ -33,9 +34,9 @@ def read_npy(params):
         hand_link_pose = np.stack(hand_link_pose)
 
         hand_pose_lst.append(hand_link_pose)
-    data["scene_cfg"]["scene_id"] += "_" + os.path.basename(npy_path)
+    scene_cfg["scene_id"] += "_" + os.path.basename(npy_path)
     return {
-        "scene_cfg": data["scene_cfg"],
+        "scene_cfg": scene_cfg,
         "hand_link_pose": np.stack(hand_pose_lst, axis=0),
     }
 
@@ -95,7 +96,9 @@ def task_vis_usd(configs):
 
         if len(input_path_lst) == 0:
             continue
-        logging.info(f"Find {len(input_path_lst)} data for {input_path_example}")
+        logging.info(
+            f"Find {len(input_path_lst)} in {data_folder}. Debug name: {configs.debug_name}. Check success: {task_config.check_success}"
+        )
 
         if configs.task.max_num > 0 and len(input_path_lst) > configs.task.max_num:
             input_path_lst = np.random.permutation(input_path_lst)[
