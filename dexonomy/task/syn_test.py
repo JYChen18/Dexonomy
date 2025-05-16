@@ -19,9 +19,14 @@ def _single_validation(params):
     scene_cfg = load_scene_cfg(grasp_data["scene_path"])
 
     for obj_name, obj_cfg in scene_cfg["scene"].items():
-        obj_info = load_json(obj_cfg["info_path"])
-        obj_coef = obj_info["mass"] / (obj_info["density"] * (obj_info["scale"] ** 3))
-        obj_cfg["density"] = configs.obj_mass / (obj_coef * np.prod(obj_cfg["scale"]))
+        if obj_cfg["type"] == "rigid_object":
+            obj_info = load_json(obj_cfg["info_path"])
+            obj_coef = obj_info["mass"] / (
+                obj_info["density"] * (obj_info["scale"] ** 3)
+            )
+            obj_cfg["density"] = configs.obj_mass / (
+                obj_coef * np.prod(obj_cfg["scale"])
+            )
 
     sim_env = MuJoCo_TestEnv(
         hand_xml_path=hand_config.xml_path,
