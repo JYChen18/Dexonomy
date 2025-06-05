@@ -246,7 +246,7 @@ def _single_hand_refine(params):
 
 def task_syn_hand(configs):
     input_path_lst = glob.glob(
-        os.path.join(configs.init_dir, "**/**.npy"), recursive=True
+        os.path.join(configs.init_dir, "**/*.npy"), recursive=True
     )
     if configs.debug_name is not None:
         input_path_lst = [p for p in input_path_lst if configs.debug_name in p]

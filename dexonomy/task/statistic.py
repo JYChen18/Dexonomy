@@ -96,13 +96,13 @@ def task_stat(configs):
     # Hand template summary
     for template_name in tmp_lst:
         all_init_lst = glob(
-            os.path.join(configs.init_dir, template_name, "**/**.npy"), recursive=True
+            os.path.join(configs.init_dir, template_name, "**/*.npy"), recursive=True
         )
         all_grasp_lst = glob(
-            os.path.join(configs.grasp_dir, template_name, "**/**.npy"), recursive=True
+            os.path.join(configs.grasp_dir, template_name, "**/*.npy"), recursive=True
         )
         all_eval_lst = glob(
-            os.path.join(configs.succ_dir, template_name, "**/**.npy"), recursive=True
+            os.path.join(configs.succ_dir, template_name, "**/*.npy"), recursive=True
         )
 
         if len(all_eval_lst) + len(all_init_lst) + len(all_grasp_lst) == 0:

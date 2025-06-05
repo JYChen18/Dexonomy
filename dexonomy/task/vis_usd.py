@@ -75,13 +75,13 @@ def task_vis_usd(configs):
             raise NotImplementedError(
                 f"Valid choices: 'grasp', 'init', 'succ', 'init_template', 'new_template'. Current: '{task_config.data_type}' "
             )
-        input_path_lst = glob(os.path.join(data_folder, "**/**.npy"), recursive=True)
+        input_path_lst = glob(os.path.join(data_folder, "**/*.npy"), recursive=True)
         if configs.debug_name is not None:
             input_path_lst = [p for p in input_path_lst if configs.debug_name in p]
 
         if check_folder is not None and task_config.check_success is not None:
             check_path_lst = glob(
-                os.path.join(check_folder, "**/**.npy"), recursive=True
+                os.path.join(check_folder, "**/*.npy"), recursive=True
             )
             if configs.debug_name is not None:
                 check_path_lst = [p for p in check_path_lst if configs.debug_name in p]

@@ -83,7 +83,7 @@ def safe_validation(params):
 
 def task_syn_test(configs):
     input_path_lst = glob.glob(
-        os.path.join(configs.grasp_dir, "**/**.npy"), recursive=True
+        os.path.join(configs.grasp_dir, "**/*.npy"), recursive=True
     )
     if configs.debug_name is not None:
         input_path_lst = [p for p in input_path_lst if configs.debug_name in p]
