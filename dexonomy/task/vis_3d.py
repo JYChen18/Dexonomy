@@ -42,7 +42,7 @@ def _single_visd(params):
 
     # Hand
     xmat, xpos = kin.forward_kinematics(
-        qpos=grasp_data["grasp_qpos"][7:], pose=grasp_data["grasp_qpos"][:7]
+        qpos=grasp_data["grasp_qpos"][0, 7:], pose=grasp_data["grasp_qpos"][0, :7]
     )
     hand_mesh = kin.get_posed_meshes(xmat, xpos)
 

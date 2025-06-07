@@ -7,6 +7,7 @@ import traceback
 
 from dexonomy.sim import MuJoCo_TestEnv
 from dexonomy.util.file_util import load_scene_cfg, load_json
+from dexonomy.util.traj_util import get_full_traj
 
 
 def _single_validation(params):
@@ -38,12 +39,33 @@ def _single_validation(params):
         debug_viewer=configs.debug_viewer,
     )
 
-    succ_flag = sim_env.test_mocap(
-        grasp_data["grasp_qpos"],
-        grasp_data["squeeze_qpos"],
+    sim_env.reset_qpos(grasp_data["grasp_qpos"][0])
+    init_obj_pose = np.copy(sim_env.get_interest_object_pose())
+
+    qpos_lst, extdir_lst, interp_lst, target_obj_pose = get_full_traj(
+        init_obj_pose=init_obj_pose,
+        move_cfg=scene_cfg["task"],
+        grasp_qpos=grasp_data["grasp_qpos"],
+        squeeze_qpos=grasp_data["squeeze_qpos"],
+        pregrasp_qpos=grasp_data["pregrasp_qpos"],
+        approach_qpos=(
+            grasp_data["approach_qpos"] if "approach_qpos" in grasp_data else None
+        ),
+        move_qpos=grasp_data["move_qpos"] if "move_qpos" in grasp_data else None,
+    )
+
+    if scene_cfg["task"]["type"] == "force_closure":
+        eval_func = sim_env.test_fc
+    else:
+        eval_func = sim_env.test_move
+
+    succ_flag = eval_func(
+        qpos_lst,
+        extdir_lst,
+        interp_lst,
+        target_obj_pose,
         task_config.trans_thre,
         task_config.angle_thre,
-        scene_cfg["task"],
     )
 
     sim_env.debug_postprocess(

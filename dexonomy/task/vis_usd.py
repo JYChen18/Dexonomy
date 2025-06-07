@@ -21,19 +21,20 @@ def read_npy(params):
 
     hand_pose_lst = []
     for qpos_name in task_config.qpos_type:
-        hand_pose = data[f"{qpos_name}_qpos"][:7]
-        hand_qpos = data[f"{qpos_name}_qpos"][7:]
+        for qpos_id in range(data[f"{qpos_name}_qpos"].shape[0]):
+            hand_pose = data[f"{qpos_name}_qpos"][qpos_id, :7]
+            hand_qpos = data[f"{qpos_name}_qpos"][qpos_id, 7:]
 
-        xmat, xpos = kin.forward_kinematics(qpos=hand_qpos, pose=hand_pose)
-        hand_link_pose = []
-        for body_name in kin.body_mesh_dict.keys():
-            body_id = kin.body_id_dict[body_name]
-            hand_link_pose.append(
-                np.concatenate([xpos[body_id], tq.mat2quat(xmat[body_id])])
-            )
-        hand_link_pose = np.stack(hand_link_pose)
+            xmat, xpos = kin.forward_kinematics(qpos=hand_qpos, pose=hand_pose)
+            hand_link_pose = []
+            for body_name in kin.body_mesh_dict.keys():
+                body_id = kin.body_id_dict[body_name]
+                hand_link_pose.append(
+                    np.concatenate([xpos[body_id], tq.mat2quat(xmat[body_id])])
+                )
+            hand_link_pose = np.stack(hand_link_pose)
 
-        hand_pose_lst.append(hand_link_pose)
+            hand_pose_lst.append(hand_link_pose)
     scene_cfg["scene_id"] += "_" + os.path.basename(npy_path)
     return {
         "scene_cfg": scene_cfg,
@@ -75,13 +76,15 @@ def task_vis_usd(configs):
             raise NotImplementedError(
                 f"Valid choices: 'grasp', 'init', 'succ', 'init_template', 'new_template'. Current: '{task_config.data_type}' "
             )
-        input_path_lst = glob(os.path.join(data_folder, "**/*.npy"), recursive=True)
+        input_path_lst = glob(
+            os.path.join(data_folder, temp_name, "**/*.npy"), recursive=True
+        )
         if configs.debug_name is not None:
             input_path_lst = [p for p in input_path_lst if configs.debug_name in p]
 
         if check_folder is not None and task_config.check_success is not None:
             check_path_lst = glob(
-                os.path.join(check_folder, "**/*.npy"), recursive=True
+                os.path.join(check_folder, temp_name, "**/*.npy"), recursive=True
             )
             if configs.debug_name is not None:
                 check_path_lst = [p for p in check_path_lst if configs.debug_name in p]
@@ -118,7 +121,7 @@ def task_vis_usd(configs):
                 scene_dict[scene_id] = []
             scene_dict[scene_id].append(r)
 
-        data_length = len(configs.task.qpos_type)
+        data_length = result_iter[0]["hand_link_pose"].shape[0]
 
         hand_pose_scale_lst = np.ones(
             (

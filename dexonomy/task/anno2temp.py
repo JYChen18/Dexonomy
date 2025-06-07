@@ -112,7 +112,9 @@ def _single_anno2temp(params):
 
     temp_data = {
         "hand_template_name": os.path.basename(anno_path).removesuffix(".yaml"),
-        "grasp_qpos": np.concatenate([np_array32([0.0, 0, 0, 1, 0, 0, 0]), qpos_lst]),
+        "grasp_qpos": np.concatenate([np_array32([0.0, 0, 0, 1, 0, 0, 0]), qpos_lst])[
+            None
+        ],
         "hand_worldframe_contacts": (
             np.stack(hand_worldframe_contact, axis=0)
             if len(hand_worldframe_contact) > 0

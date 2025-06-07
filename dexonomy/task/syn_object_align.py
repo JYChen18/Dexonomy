@@ -482,7 +482,9 @@ def task_syn_obj(configs):
                             "evolution_num": np_array32([hand_evolution_num]),
                             "hand_type": configs.hand_name,
                             "hand_template_name": hand_temp_dict["hand_template_name"],
-                            "grasp_qpos": np.concatenate([grasp_pose, grasp_qpos]),
+                            "grasp_qpos": np.concatenate([grasp_pose, grasp_qpos])[
+                                None
+                            ],
                             "hand_worldframe_contacts": hand_c,
                             "hand_contact_body_names": hand_temp_dict[
                                 "hand_contact_body_names"

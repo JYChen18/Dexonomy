@@ -60,7 +60,7 @@ def scene_cfg2mesh(scene_cfg):
                 [0, 0, -plane_thick / 2]
             )
             tm = trimesh.creation.box(
-                extents=[1.0, 1.0, plane_thick], transform=delta_transform
+                extents=[2.0, 2.0, plane_thick], transform=delta_transform
             )
         else:
             raise NotImplementedError

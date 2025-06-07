@@ -14,9 +14,9 @@ grasp:
 pregrasp:
   outer_iter: 20
   inner_iter: 10
-  ho_target_dist: 0.025
+  ho_target_dist: 0.045
   coll_filter: 
     hh_threshold: 0.0
-    ho_threshold: 0.02
+    ho_threshold: 0.04
 
 cust_log_dir: ${log_dir}

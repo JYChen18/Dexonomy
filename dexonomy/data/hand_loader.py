@@ -199,6 +199,7 @@ class HandTemplateLibrary:
 
     def _load_data(self, kinematic: MuJoCo_RobotFK, data_path: str):
         hand_data = np.load(data_path, allow_pickle=True).item()
+        hand_data["grasp_qpos"] = hand_data["grasp_qpos"].squeeze()
         xmat, xpos = kinematic.forward_kinematics(hand_data["grasp_qpos"][7:])
         body_xmat = xmat[self.hand_sk_body_id]
         body_xpos = xpos[self.hand_sk_body_id]

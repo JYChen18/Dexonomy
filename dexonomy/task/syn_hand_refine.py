@@ -81,9 +81,11 @@ def _single_hand_refine(params):
         scene_cfg=load_scene_cfg(grasp_data["scene_path"]),
         debug_render=configs.debug_render,
         debug_viewer=configs.debug_viewer,
+        obj_margin=task_config.pregrasp.ho_target_dist,
     )
 
-    sim_env.reset_qpos(grasp_data["grasp_qpos"])
+    sim_env.reset_qpos(grasp_data["grasp_qpos"][0])
+    sim_env.set_obj_margin(task_config.grasp.ho_target_dist)
 
     hand_contact_body_names = grasp_data["hand_contact_body_names"]
     hand_bodyframe_contact = sim_env.get_hand_bodyframe_contact(
@@ -116,7 +118,7 @@ def _single_hand_refine(params):
             continue
         break
 
-    grasp_data["grasp_qpos"] = np_array32(sim_env.get_hand_qpos())
+    grasp_data["grasp_qpos"] = np_array32(sim_env.get_hand_qpos())[None]
 
     if (
         len(ho_contact_lst) == 0
@@ -137,7 +139,7 @@ def _single_hand_refine(params):
                 configs.init_dir, configs.debug_dir
             ).replace(".npy", ".gif")
         )
-        logging.debug(f"Fail: {input_npy_path}")
+        logging.debug(f"Fail (Grasp): {len(ho_contact_lst)} {input_npy_path}")
         return input_npy_path
 
     hand_point = np.array([c["contact_pos"] for c in ho_contact_lst])
@@ -156,17 +158,17 @@ def _single_hand_refine(params):
                 configs.init_dir, configs.debug_dir
             ).replace(".npy", ".gif")
         )
-        logging.debug(f"Fail: {input_npy_path}")
+        logging.debug(f"Fail (QP): {input_npy_path}")
         return input_npy_path
 
     grasp_data["squeeze_qpos"] = np_array32(
         sim_env.get_squeeze_qpos(
-            grasp_data["grasp_qpos"],
+            grasp_data["grasp_qpos"][0],
             hand_body,
             hand_point,
             10 * contact_wrench,
         )
-    )
+    )[None]
 
     if configs.update_template == "body":
         hand_worldframe_contacts = sim_env.get_hand_worldframe_contact(
@@ -199,20 +201,23 @@ def _single_hand_refine(params):
     grasp_data["hand_worldframe_contacts"] = hand_worldframe_contacts
 
     if task_config.pregrasp:
+        pregrasp_lst = []
         for ii in range(task_config.pregrasp.outer_iter):
-            sim_env.set_obj_margin(
-                task_config.pregrasp.ho_target_dist
-                * min((ii + 1) / task_config.pregrasp.outer_iter * 2, 1)
+            curr_ho_margin = task_config.pregrasp.ho_target_dist * min(
+                (ii + 1) / task_config.pregrasp.outer_iter * 2, 1
             )
+            sim_env.set_obj_margin(curr_ho_margin)
             sim_env.keep_hand_stable()
             sim_env.control_hand_step(task_config.grasp.inner_iter)
+            pregrasp_lst.append(np.copy(sim_env.get_hand_qpos()))
+            if curr_ho_margin >= task_config.pregrasp.ho_target_dist:
+                ho_contact_lst, hh_contact_lst = sim_env.get_contact_info()
 
-            ho_contact_lst, hh_contact_lst = sim_env.get_contact_info()
-            if not _collision_filter(
-                ho_contact_lst, hh_contact_lst, task_config.pregrasp.coll_filter
-            ):
-                continue
-            break
+                if not _collision_filter(
+                    ho_contact_lst, hh_contact_lst, task_config.pregrasp.coll_filter
+                ):
+                    continue
+                break
 
         if not _collision_filter(
             ho_contact_lst,
@@ -225,10 +230,11 @@ def _single_hand_refine(params):
                     configs.init_dir, configs.debug_dir
                 ).replace(".npy", ".gif")
             )
-            logging.debug(f"Fail: {input_npy_path}")
+            logging.debug(f"Fail (Pregrasp): {input_npy_path}")
             return input_npy_path
 
-        grasp_data["pregrasp_qpos"] = np_array32(sim_env.get_hand_qpos())
+        pregrasp_lst.reverse()
+        grasp_data["pregrasp_qpos"] = np_array32(np.stack(pregrasp_lst, axis=0))[::4]
 
     sim_env.debug_postprocess(
         save_path=input_npy_path.replace(configs.init_dir, configs.debug_dir).replace(

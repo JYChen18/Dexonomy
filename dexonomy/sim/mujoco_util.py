@@ -11,8 +11,6 @@ import mujoco.viewer
 import transforms3d.quaternions as tq
 
 from dexonomy.util.np_rot_util import (
-    np_normalize_vector,
-    np_interp_hinge,
     np_interp_slide,
     np_interp_qpos,
     np_array32,
@@ -44,7 +42,10 @@ class MuJoCo_BaseEnv:
         scene_cfg: Dict = None,
         debug_render: bool = False,
         debug_viewer: bool = False,
+        obj_margin: float = None,
     ):
+        if obj_margin is not None:
+            self.obj_margin = obj_margin
         self.hand_add_mocap = hand_add_mocap
         self.spec = mujoco.MjSpec()
         self.spec.meshdir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
@@ -252,7 +253,7 @@ class MuJoCo_BaseEnv:
             castshadow=False,
         )
         self.spec.worldbody.add_camera(
-            name="closeup", pos=[-3.0, 0.0, 3.0], xyaxes=[0, -1, 0, 1, 0, 1]
+            name="closeup", pos=[-1.0, 0.0, 1.0], xyaxes=[0, -1, 0, 1, 0, 1]
         )
 
     def _set_friction(self, friction_coef: tuple[float, float]):
@@ -272,15 +273,13 @@ class MuJoCo_BaseEnv:
             ]
         )
 
-    def get_interest_object_gravity(self):
+    def set_interest_object_extdir(self, extdir):
         obj_gravity = self.model.body_subtreemass[self.interest_obj_bodyid] * 9.8
         if obj_gravity < 0.001:
             logging.error(
                 f"Too small object gravity: {obj_gravity}. Please check the object density."
             )
-        return obj_gravity
-
-    def set_interest_object_extforce(self, extforce):
+        extforce = extdir * obj_gravity
         if np.linalg.norm(extforce) < 0.001:
             logging.error(
                 f"Too small external force: {extforce}. Please check the axis in task of scene cfg."
@@ -292,7 +291,7 @@ class MuJoCo_BaseEnv:
 
     def get_contact_info(self, obj_margin=None):
         if obj_margin is not None:
-            self.set_obj_margin(obj_margin)
+            self.set_obj_margin(obj_margin, temporal=True)
             mujoco.mj_forward(self.model, self.data)
 
         object_id = (
@@ -352,10 +351,12 @@ class MuJoCo_BaseEnv:
 
         # Set margin and gap back
         if obj_margin is not None:
-            self.set_obj_margin(self.obj_margin)
+            self.set_obj_margin(self.obj_margin, temporal=True)
         return ho_contact, hh_contact
 
-    def set_obj_margin(self, obj_margin):
+    def set_obj_margin(self, obj_margin, temporal=False):
+        if not temporal:
+            self.obj_margin = obj_margin
         for i in range(self.model.ngeom):
             if self.model.geom(i).name.startswith(self.obj_prefix):
                 self.model.geom_margin[i] = obj_margin
@@ -375,17 +376,23 @@ class MuJoCo_BaseEnv:
         mujoco.mj_forward(self.model, self.data)
         return
 
-    def control_hand_with_lst(
-        self, pose_lst, qpos_lst, extforce_lst=None, step_inner=10
-    ):
-        for j in range(len(qpos_lst)):
+    def control_hand_with_interp(self, qpos_lst, extdir_lst, interp_lst, step_inner=10):
+        for i in range(len(qpos_lst) - 1):
+            interp_qpos_lst = np_interp_qpos(
+                qpos_lst[i], qpos_lst[i + 1], interp_lst[i]
+            )
             if self.hand_add_mocap:
-                self.data.mocap_pos[0] = pose_lst[j][:3]
-                self.data.mocap_quat[0] = pose_lst[j][3:7]
-            self.data.ctrl[:] = self._qpos2ctrl(qpos_lst[j])
-            if extforce_lst is not None:
-                self.set_interest_object_extforce(extforce_lst[j])
-            self.control_hand_step(step_inner)
+                interp_qpos_lst[:, :7] = np_interp_slide(
+                    qpos_lst[i, :7], qpos_lst[i + 1, :7], interp_lst[i]
+                )
+            for j in range(interp_lst[i]):
+                if self.hand_add_mocap:
+                    self.data.mocap_pos[0] = interp_qpos_lst[j][:3]
+                    self.data.mocap_quat[0] = interp_qpos_lst[j][3:7]
+                self.data.ctrl[:] = self._qpos2ctrl(interp_qpos_lst[j])
+                if extdir_lst[i] is not None:
+                    self.set_interest_object_extdir(extdir_lst[i])
+                self.control_hand_step(step_inner)
         return
 
     def control_hand_step(self, step_inner):
@@ -538,45 +545,28 @@ class MuJoCo_TestEnv(MuJoCo_BaseEnv):
             g.condim = 4
         return
 
-    def test_mocap(
-        self, grasp_qpos, squeeze_qpos, trans_thre, angle_thre, move_cfg, step=10
+    def test_fc(
+        self,
+        qpos_lst,
+        extdir_lst,
+        interp_lst,
+        target_obj_pose,
+        trans_thre,
+        angle_thre,
     ):
-        if move_cfg["type"] == "force_closure":
-            return self.test_mocap_fc(
-                grasp_qpos, squeeze_qpos, trans_thre, angle_thre, step
-            )
-        elif move_cfg["type"] == "slide":
-            return self.test_mocap_slide(
-                grasp_qpos, squeeze_qpos, trans_thre, angle_thre, move_cfg, step
-            )
-        elif move_cfg["type"] == "hinge":
-            return self.test_mocap_hinge(
-                grasp_qpos, squeeze_qpos, trans_thre, angle_thre, move_cfg, step
-            )
-        else:
-            raise NotImplementedError(
-                f"Unsupported task type: {move_cfg['type']}. Avaiable choices: 'hinge', 'slide', 'force_closure'."
-            )
-
-    def test_mocap_fc(self, grasp_qpos, squeeze_qpos, trans_thre, angle_thre, step):
         external_force_direction = np.array(
             [[1.0, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]
         )
-        squeeze_pose_lst = np_interp_slide(grasp_qpos[:7], squeeze_qpos[:7], step)
-        squeeze_qpos_lst = np_interp_qpos(grasp_qpos, squeeze_qpos, step=step)
 
         for extforce_dir in external_force_direction:
-            self.reset_qpos(grasp_qpos)
-            init_obj_pose = np.copy(self.get_interest_object_pose())
-            self.control_hand_with_lst(squeeze_pose_lst, squeeze_qpos_lst)
-            self.set_interest_object_extforce(
-                extforce_dir * self.get_interest_object_gravity()
-            )
+            self.reset_qpos(qpos_lst[0])
+            self.control_hand_with_interp(qpos_lst, extdir_lst, interp_lst)
+            self.set_interest_object_extdir(extforce_dir)
             for _ in range(10):
                 self.control_hand_step(step_inner=50)
                 latter_obj_pose = self.get_interest_object_pose()
                 delta_pos, delta_angle = np_get_delta_pose(
-                    init_obj_pose, latter_obj_pose
+                    target_obj_pose, latter_obj_pose
                 )
                 succ_flag = (delta_pos < trans_thre) & (delta_angle < angle_thre)
                 if not succ_flag:
@@ -585,81 +575,22 @@ class MuJoCo_TestEnv(MuJoCo_BaseEnv):
                 break
         return succ_flag
 
-    def test_mocap_slide(
-        self, grasp_qpos, squeeze_qpos, trans_thre, angle_thre, move_cfg, step
+    def test_move(
+        self,
+        qpos_lst,
+        extdir_lst,
+        interp_lst,
+        target_obj_pose,
+        trans_thre,
+        angle_thre,
     ):
-        squeeze_pose_lst = np_interp_slide(grasp_qpos[:7], squeeze_qpos[:7], step)
-        squeeze_qpos_lst = np_interp_qpos(grasp_qpos, squeeze_qpos, step=step)
-        target_pose = np.copy(squeeze_qpos[:7])
-        target_pose[:3] += move_cfg["axis"] * move_cfg["distance"]
-        move_pose_lst = np_interp_slide(squeeze_qpos[:7], target_pose, step)
-        move_qpos_lst = [squeeze_qpos] * step
-
-        self.reset_qpos(grasp_qpos)
-        initial_obj_pose = np.copy(self.get_interest_object_pose())
-        target_obj_pose = np.copy(initial_obj_pose)
-        target_obj_pose[:3] += move_cfg["axis"] * move_cfg["distance"]
-        obj_pose_lst = np_interp_slide(initial_obj_pose, target_obj_pose, step)
-        extforce_lst = [move_cfg["axis"] * self.get_interest_object_gravity()] * step
-
-        self.control_hand_with_lst(squeeze_pose_lst, squeeze_qpos_lst)
-        self.control_hand_with_lst(move_pose_lst, move_qpos_lst, extforce_lst)
-
-        for _ in range(5):
-            self.control_hand_step(step_inner=50)
-            latter_obj_pose = self.get_interest_object_pose()
-            delta_pos, delta_angle = np_get_delta_pose(
-                obj_pose_lst[-1], latter_obj_pose
-            )
-            succ_flag = (delta_pos < trans_thre) & (delta_angle < angle_thre)
-            if not succ_flag:
-                break
+        self.reset_qpos(qpos_lst[0])
+        self.control_hand_with_interp(qpos_lst, extdir_lst, interp_lst)
+        self.control_hand_step(step_inner=50)
+        latter_obj_pose = self.get_interest_object_pose()
+        delta_pos, delta_angle = np_get_delta_pose(target_obj_pose, latter_obj_pose)
+        succ_flag = (delta_pos < trans_thre) & (delta_angle < angle_thre)
         return succ_flag
-
-    def test_mocap_hinge(
-        self, grasp_qpos, squeeze_qpos, trans_thre, angle_thre, move_cfg, step
-    ):
-        squeeze_pose_lst = np_interp_slide(grasp_qpos[:7], squeeze_qpos[:7], step)
-        squeeze_qpos_lst = np_interp_qpos(grasp_qpos, squeeze_qpos, step=step)
-        move_pose_lst = np_interp_hinge(
-            pose1=squeeze_qpos[:7],
-            hinge_pos=move_cfg["pos"],
-            hinge_axis=move_cfg["axis"],
-            move_angle=move_cfg["distance"],
-            step=step,
-        )
-        move_qpos_lst = [squeeze_qpos] * step
-
-        self.reset_qpos(grasp_qpos)
-        obj_pose_lst = np_interp_hinge(
-            pose1=self.get_interest_object_pose(),
-            hinge_pos=move_cfg["pos"],
-            hinge_axis=move_cfg["axis"],
-            move_angle=move_cfg["distance"],
-            step=step,
-        )
-        extforce_lst = [
-            -np.cross(move_cfg["axis"], np_normalize_vector(p[:3] - move_cfg["pos"]))
-            * self.get_interest_object_gravity()
-            for p in move_pose_lst
-        ]
-
-        self.control_hand_with_lst(squeeze_pose_lst, squeeze_qpos_lst)
-        self.control_hand_with_lst(move_pose_lst, move_qpos_lst, extforce_lst)
-
-        for _ in range(5):
-            self.control_hand_step(step_inner=50)
-            latter_obj_pose = self.get_interest_object_pose()
-            delta_pos, delta_angle = np_get_delta_pose(
-                obj_pose_lst[-1], latter_obj_pose
-            )
-            succ_flag = (delta_pos < trans_thre) & (delta_angle < angle_thre)
-            if not succ_flag:
-                break
-        return succ_flag
-
-    def test_arm(self):
-        raise NotImplementedError
 
 
 class MuJoCo_RobotFK:
