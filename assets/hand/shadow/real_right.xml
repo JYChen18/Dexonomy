@@ -7,46 +7,46 @@
     <default class="right_hand">
       <mesh scale="0.001 0.001 0.001"/>
       <joint axis="1 0 0" damping="0.05" armature="0.0002" frictionloss="0.01"/>
-      <position forcerange="-1 1"/>
+      <position forcerange="-3 3" kp="5"/>
 
       <default class="thumb">
         <default class="thbase">
-          <joint axis="0 0 -1" range="-1.0472 1.0472"/>
-          <position kp="0.4" ctrlrange="-1.0472 1.0472" forcerange="-3 3"/>
+          <joint axis="0 0 -1" range="-0.9472 0.9472"/>
+          <!-- <position kp="0.4" ctrlrange="-0.9472 0.9472" forcerange="-3 3"/> -->
         </default>
         <default class="thproximal">
-          <joint range="0 1.22173"/>
-          <position ctrlrange="0 1.22173" forcerange="-2 2"/>
+          <joint range="0.1 1.12173"/>
+          <!-- <position ctrlrange="0.1 1.12173" forcerange="-2 2"/> -->
         </default>
         <default class="thhub">
-          <joint range="-0.20944 0.20944"/>
-          <position kp="0.5" ctrlrange="-0.20944 0.20944"/>
+          <joint range="-0.10944 0.10944"/>
+          <!-- <position kp="0.5" ctrlrange="-0.10944 0.10944"/> -->
         </default>
         <default class="thmiddle">
-          <joint axis="0 -1 0" range="-0.698132 0.698132"/>
-          <position kp="1.5" ctrlrange="-0.698132 0.698132"/>
+          <joint axis="0 -1 0" range="-0.1 0.598132"/>
+          <!-- <position kp="1.5" ctrlrange="-0.598132 0.598132"/> -->
         </default>
         <default class="thdistal">
-          <joint range="-0.261799 1.5708"/>
-          <position ctrlrange="-0.261799 1.5708"/>
+          <joint range="-0.161799 0.7"/>
+          <!-- <position ctrlrange="-0.161799 1.4708"/> -->
         </default>
       </default>
 
       <default class="metacarpal">
-        <joint axis="0.573576 0 0.819152" range="0 0.785398"/>
-        <position ctrlrange="0 0.785398"/>
+        <joint axis="0.573576 0 0.819152" range="0.1 0.685398"/>
+        <!-- <position ctrlrange="0.1 0.685398"/> -->
       </default>
       <default class="knuckle">
-        <joint axis="0 -1 0" range="-0.349066 0.349066"/>
-        <position ctrlrange="-0.349066 0.349066"/>
+        <joint axis="0 -1 0" range="-0.249066 0.249066"/>
+        <!-- <position ctrlrange="-0.249066 0.249066"/> -->
       </default>
       <default class="proximal">
-        <joint range="-0.261799 1.5708"/>
-        <position ctrlrange="-0.261799 1.5708"/>
+        <joint range="-0.161799 1.4708"/>
+        <!-- <position ctrlrange="-0.161799 1.4708"/> -->
       </default>
       <default class="middle_distal">
-        <joint range="0 1.5708"/>
-        <position kp="0.5" ctrlrange="0 3.1415"/>
+        <joint range="0.1 1.4708"/>
+        <!-- <position kp="0.5" ctrlrange="0 3.1415"/> -->
       </default>
       <default class="coupling_tendon">
         <geom type="cylinder" fromto="-0.01 0 0 0.01 0 0" rgba="0.8 0.2 0.2 0.4" contype="0" conaffinity="0" group="4"/>

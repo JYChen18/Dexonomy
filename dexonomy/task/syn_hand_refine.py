@@ -202,6 +202,7 @@ def _single_hand_refine(params):
 
     if task_config.pregrasp:
         pregrasp_lst = []
+        step_group_num = 2
         for ii in range(task_config.pregrasp.outer_iter):
             curr_ho_margin = task_config.pregrasp.ho_target_dist * min(
                 (ii + 1) / task_config.pregrasp.outer_iter * 2, 1
@@ -210,7 +211,10 @@ def _single_hand_refine(params):
             sim_env.keep_hand_stable()
             sim_env.control_hand_step(task_config.grasp.inner_iter)
             pregrasp_lst.append(np.copy(sim_env.get_hand_qpos()))
-            if curr_ho_margin >= task_config.pregrasp.ho_target_dist:
+            if (
+                ii % step_group_num == 0
+                and curr_ho_margin >= task_config.pregrasp.ho_target_dist
+            ):
                 ho_contact_lst, hh_contact_lst = sim_env.get_contact_info()
 
                 if not _collision_filter(
@@ -233,8 +237,9 @@ def _single_hand_refine(params):
             logging.debug(f"Fail (Pregrasp): {input_npy_path}")
             return input_npy_path
 
-        pregrasp_lst.reverse()
-        grasp_data["pregrasp_qpos"] = np_array32(np.stack(pregrasp_lst, axis=0))[::4]
+        grasp_data["pregrasp_qpos"] = np_array32(np.stack(pregrasp_lst, axis=0))[
+            ::-step_group_num
+        ]
 
     sim_env.debug_postprocess(
         save_path=input_npy_path.replace(configs.init_dir, configs.debug_dir).replace(
