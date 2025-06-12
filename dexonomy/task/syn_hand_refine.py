@@ -67,16 +67,13 @@ def _single_hand_refine(params):
 
     input_npy_path, configs = params[0], params[1]
     grasp_npy_path = input_npy_path.replace(configs.init_dir, configs.grasp_dir)
-
     task_config = configs.task
-    hand_config = configs.hand
 
     grasp_data = np.load(input_npy_path, allow_pickle=True).item()
 
     sim_env = MuJoCo_OptEnv(
-        hand_xml_path=hand_config.xml_path,
-        hand_add_mocap=hand_config.add_mocap,
-        hand_exclude_table_contact=hand_config.exclude_table_contact,
+        hand_xml_path=configs.hand.xml_path,
+        hand_with_arm=False,
         friction_coef=None,
         scene_cfg=load_scene_cfg(grasp_data["scene_path"]),
         debug_render=configs.debug_render,
@@ -84,7 +81,7 @@ def _single_hand_refine(params):
         obj_margin=task_config.pregrasp.ho_target_dist,
     )
 
-    sim_env.reset_qpos(grasp_data["grasp_qpos"][0])
+    sim_env.set_ctrl(grasp_data["grasp_qpos"][0])
     sim_env.set_obj_margin(task_config.grasp.ho_target_dist)
 
     hand_contact_body_names = grasp_data["hand_contact_body_names"]
@@ -98,7 +95,7 @@ def _single_hand_refine(params):
             grasp_data["obj_worldframe_contacts"],
         )
 
-        sim_env.control_hand_step(task_config.grasp.inner_iter)
+        sim_env.simulation_step(task_config.grasp.inner_iter)
 
         if ii == 0 or (
             ii < task_config.grasp.outer_iter - 1
@@ -209,7 +206,7 @@ def _single_hand_refine(params):
             )
             sim_env.set_obj_margin(curr_ho_margin)
             sim_env.keep_hand_stable()
-            sim_env.control_hand_step(task_config.grasp.inner_iter)
+            sim_env.simulation_step(task_config.grasp.inner_iter)
             pregrasp_lst.append(np.copy(sim_env.get_hand_qpos()))
             if (
                 ii % step_group_num == 0

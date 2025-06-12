@@ -1,4 +1,3 @@
 xml_path: ${asset_root}/hand/unitree_g1/dex_3_1_r.xml  
 color: [0.863157, 0.0865002, 0.0802199, 1.0]
-add_mocap: True
-exclude_table_contact: 
+hand_on_arm:

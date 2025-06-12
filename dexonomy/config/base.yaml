@@ -32,6 +32,7 @@ new_template_dir: ${save_dir}/new_template
 vis_3d_dir: ${save_dir}/vis_3d
 vis_usd_dir: ${save_dir}/vis_usd
 debug_dir: ${save_dir}/debug
+mogen_dir: ${save_dir}/mogen
 
 # Path for logs
 log_id: 0     # Allow parallelize "syn_obj" task

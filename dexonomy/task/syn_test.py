@@ -12,7 +12,7 @@ from dexonomy.util.traj_util import get_full_traj
 
 def _single_validation(params):
     input_npy_path, configs = params[0], params[1]
-    output_npy_path = input_npy_path.replace(configs.grasp_dir, configs.succ_dir)
+    graspdata_dir = configs.mogen_dir if configs.task.adding_arm else configs.grasp_dir
     task_config = configs.task
     hand_config = configs.hand
 
@@ -29,29 +29,37 @@ def _single_validation(params):
                 obj_coef * np.prod(obj_cfg["scale"])
             )
 
+    if task_config.adding_arm:
+        hand_xml_path = hand_config.hand_on_arm.xml_path
+        hand_arm_ee_name = hand_config.hand_on_arm.ee_name
+        hand_arm_exclude_table_contact = hand_config.hand_on_arm.exclude_table_contact
+    else:
+        hand_xml_path = hand_config.xml_path
+        hand_arm_ee_name = None
+        hand_arm_exclude_table_contact = None
+
     sim_env = MuJoCo_TestEnv(
-        hand_xml_path=hand_config.xml_path,
-        hand_add_mocap=hand_config.add_mocap,
-        hand_exclude_table_contact=hand_config.exclude_table_contact,
+        hand_with_arm=task_config.adding_arm,
+        hand_xml_path=hand_xml_path,
+        hand_arm_ee_name=hand_arm_ee_name,
+        hand_arm_exclude_table_contact=hand_arm_exclude_table_contact,
         friction_coef=task_config.miu_coef,
         scene_cfg=scene_cfg,
         debug_render=configs.debug_render,
         debug_viewer=configs.debug_viewer,
     )
 
-    sim_env.reset_qpos(grasp_data["grasp_qpos"][0])
     init_obj_pose = np.copy(sim_env.get_interest_object_pose())
 
-    qpos_lst, extdir_lst, interp_lst, target_obj_pose = get_full_traj(
+    qpos_lst, ctype_lst, extdir_lst, interp_lst, target_obj_pose = get_full_traj(
         init_obj_pose=init_obj_pose,
         move_cfg=scene_cfg["task"],
         grasp_qpos=grasp_data["grasp_qpos"],
         squeeze_qpos=grasp_data["squeeze_qpos"],
         pregrasp_qpos=grasp_data["pregrasp_qpos"],
         approach_qpos=(
-            grasp_data["approach_qpos"] if "approach_qpos" in grasp_data else None
+            grasp_data["robot_pose"] if "robot_pose" in grasp_data else None
         ),
-        move_qpos=grasp_data["move_qpos"] if "move_qpos" in grasp_data else None,
     )
 
     if scene_cfg["task"]["type"] == "force_closure":
@@ -59,8 +67,9 @@ def _single_validation(params):
     else:
         eval_func = sim_env.test_move
 
-    succ_flag = eval_func(
+    succ_flag, real_qpos_lst = eval_func(
         qpos_lst,
+        ctype_lst,
         extdir_lst,
         interp_lst,
         target_obj_pose,
@@ -69,22 +78,30 @@ def _single_validation(params):
     )
 
     sim_env.debug_postprocess(
-        save_path=input_npy_path.replace(configs.grasp_dir, configs.debug_dir).replace(
+        save_path=input_npy_path.replace(graspdata_dir, configs.debug_dir).replace(
             ".npy", ".gif"
         )
     )
 
     if succ_flag:
+        output_npy_path = input_npy_path.replace(graspdata_dir, configs.succ_dir)
         os.makedirs(os.path.dirname(output_npy_path), exist_ok=True)
-        os.system(
-            f"ln -s {os.path.relpath(input_npy_path, os.path.dirname(output_npy_path))} {output_npy_path}"
-        )
+        if task_config.adding_arm:
+            np.save(
+                output_npy_path,
+                {"scene_path": grasp_data["scene_path"], "all_qpos": real_qpos_lst},
+            )
+        else:
+            os.system(
+                f"ln -s {os.path.relpath(input_npy_path, os.path.dirname(output_npy_path))} {output_npy_path}"
+            )
+
         if (
             configs.update_template is not False
             and grasp_data["evolution_num"] <= configs.max_template_evolution
         ):
             tmp_npy_path = input_npy_path.replace(
-                configs.grasp_dir, configs.new_template_dir
+                graspdata_dir, configs.new_template_dir
             )
             os.makedirs(os.path.dirname(tmp_npy_path), exist_ok=True)
             os.system(
@@ -104,9 +121,8 @@ def safe_validation(params):
 
 
 def task_syn_test(configs):
-    input_path_lst = glob.glob(
-        os.path.join(configs.grasp_dir, "**/*.npy"), recursive=True
-    )
+    graspdata_dir = configs.mogen_dir if configs.task.adding_arm else configs.grasp_dir
+    input_path_lst = glob.glob(os.path.join(graspdata_dir, "**/*.npy"), recursive=True)
     if configs.debug_name is not None:
         input_path_lst = [p for p in input_path_lst if configs.debug_name in p]
 

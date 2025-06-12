@@ -1,0 +1,505 @@
+<mujoco model="ur10e">
+  <compiler angle="radian" meshdir="../../../third_party/mujoco_menagerie/"/>
+
+  <option integrator="implicitfast"/>
+
+  <size nkey="1"/>
+
+  <default>
+    <default class="ur10e">
+      <material shininess="0.25"/>
+      <joint range="-6.28319 6.28319" armature="0.1"/>
+      <site size="0.001 0.005 0.005" group="4" rgba="0.5 0.5 0.5 0.3"/>
+      <general ctrlrange="-6.2831 6.2831" biastype="affine" gainprm="5000" biasprm="0 -5000 -500"/>
+      <default class="size4">
+        <joint damping="10"/>
+        <general forcerange="-330 330"/>
+      </default>
+      <default class="size3">
+        <joint damping="5"/>
+        <general forcerange="-150 150"/>
+        <default class="size3_limited">
+          <joint range="-3.1415 3.1415"/>
+          <general ctrlrange="-3.1415 3.1415"/>
+        </default>
+      </default>
+      <default class="size2">
+        <joint damping="2"/>
+        <general forcerange="-56 56"/>
+      </default>
+      <default class="visual">
+        <geom type="mesh" contype="0" conaffinity="0" group="2"/>
+      </default>
+      <default class="collision">
+        <geom type="capsule" group="3"/>
+        <default class="eef_collision">
+          <geom type="cylinder"/>
+        </default>
+      </default>
+    </default>
+    <default class="hand:main">
+      <default class="hand:right_hand">
+        <mesh scale="0.001 0.001 0.001"/>
+        <joint armature="0.0002" damping="0.05" frictionloss="0.01"/>
+        <general forcerange="-3 3" biastype="affine" gainprm="5" biasprm="0 -5"/>
+        <default class="hand:wrist">
+          <joint damping="0.5"/>
+          <default class="hand:wrist_y">
+            <joint range="-0.523599 0.174533"/>
+          </default>
+          <default class="hand:wrist_x">
+            <joint range="-0.698132 0.488692"/>
+          </default>
+        </default>
+        <default class="hand:thumb">
+          <default class="hand:thbase">
+            <joint range="-0.9472 0.9472"/>
+          </default>
+          <default class="hand:thproximal">
+            <joint range="0.1 1.12173"/>
+          </default>
+          <default class="hand:thhub">
+            <joint range="-0.10944 0.10944"/>
+          </default>
+          <default class="hand:thmiddle">
+            <joint range="-0.1 0.598132"/>
+          </default>
+          <default class="hand:thdistal">
+            <joint range="-0.161799 0.7"/>
+          </default>
+        </default>
+        <default class="hand:metacarpal">
+          <joint range="0.1 0.685398"/>
+        </default>
+        <default class="hand:knuckle">
+          <joint range="-0.249066 0.249066"/>
+        </default>
+        <default class="hand:proximal">
+          <joint range="-0.161799 1.4708"/>
+        </default>
+        <default class="hand:middle_distal">
+          <joint range="0.1 1.4708"/>
+        </default>
+        <default class="hand:coupling_tendon">
+          <geom type="cylinder" contype="0" conaffinity="0" group="4" rgba="0.8 0.2 0.2 0.4"/>
+          <site size="0.002 0.005 0.005" group="4"/>
+        </default>
+        <default class="hand:plastic">
+          <geom solref="0.005" solimp="0.5 0.99 0.0001"/>
+          <default class="hand:plastic_visual">
+            <geom type="mesh" contype="0" conaffinity="0" group="2" material="black"/>
+          </default>
+          <default class="hand:plastic_collision">
+            <geom group="3"/>
+          </default>
+        </default>
+      </default>
+    </default>
+  </default>
+
+  <asset>
+    <material name="black" class="ur10e" rgba="0.033 0.033 0.033 1"/>
+    <material name="jointgray" class="ur10e" rgba="0.278 0.278 0.278 1"/>
+    <material name="linkgray" class="ur10e" rgba="0.82 0.82 0.82 1"/>
+    <material name="urblue" class="ur10e" rgba="0.49 0.678 0.8 1"/>
+    <material name="hand:black" shininess="0.25" rgba="0.16355 0.16355 0.16355 1"/>
+    <material name="hand:gray" specular="0" shininess="0.25" rgba="0.80848 0.80848 0.80848 1"/>
+    <material name="hand:metallic" specular="0" shininess="0.25" rgba="0.9 0.9 0.9 1"/>
+    <mesh name="base_0" file="universal_robots_ur10e/assets/base_0.obj"/>
+    <mesh name="base_1" file="universal_robots_ur10e/assets/base_1.obj"/>
+    <mesh name="shoulder_0" file="universal_robots_ur10e/assets/shoulder_0.obj"/>
+    <mesh name="shoulder_1" file="universal_robots_ur10e/assets/shoulder_1.obj"/>
+    <mesh name="shoulder_2" file="universal_robots_ur10e/assets/shoulder_2.obj"/>
+    <mesh name="upperarm_0" file="universal_robots_ur10e/assets/upperarm_0.obj"/>
+    <mesh name="upperarm_1" file="universal_robots_ur10e/assets/upperarm_1.obj"/>
+    <mesh name="upperarm_2" file="universal_robots_ur10e/assets/upperarm_2.obj"/>
+    <mesh name="upperarm_3" file="universal_robots_ur10e/assets/upperarm_3.obj"/>
+    <mesh name="forearm_0" file="universal_robots_ur10e/assets/forearm_0.obj"/>
+    <mesh name="forearm_1" file="universal_robots_ur10e/assets/forearm_1.obj"/>
+    <mesh name="forearm_2" file="universal_robots_ur10e/assets/forearm_2.obj"/>
+    <mesh name="forearm_3" file="universal_robots_ur10e/assets/forearm_3.obj"/>
+    <mesh name="wrist1_0" file="universal_robots_ur10e/assets/wrist1_0.obj"/>
+    <mesh name="wrist1_1" file="universal_robots_ur10e/assets/wrist1_1.obj"/>
+    <mesh name="wrist1_2" file="universal_robots_ur10e/assets/wrist1_2.obj"/>
+    <mesh name="wrist2_0" file="universal_robots_ur10e/assets/wrist2_0.obj"/>
+    <mesh name="wrist2_1" file="universal_robots_ur10e/assets/wrist2_1.obj"/>
+    <mesh name="wrist2_2" file="universal_robots_ur10e/assets/wrist2_2.obj"/>
+    <mesh name="wrist3" file="universal_robots_ur10e/assets/wrist3.obj"/>
+    <mesh name="hand:forearm_0" class="hand:right_hand" file="shadow_hand/assets/forearm_0.obj"/>
+    <mesh name="hand:forearm_1" class="hand:right_hand" file="shadow_hand/assets/forearm_1.obj"/>
+    <mesh name="hand:forearm_collision" class="hand:right_hand" file="shadow_hand/assets/forearm_collision.obj"/>
+    <mesh name="hand:wrist" class="hand:right_hand" file="shadow_hand/assets/wrist.obj"/>
+    <mesh name="hand:palm" class="hand:right_hand" file="shadow_hand/assets/palm.obj"/>
+    <mesh name="hand:f_knuckle" class="hand:right_hand" file="shadow_hand/assets/f_knuckle.obj"/>
+    <mesh name="hand:f_proximal" class="hand:right_hand" file="shadow_hand/assets/f_proximal.obj"/>
+    <mesh name="hand:f_middle" class="hand:right_hand" file="shadow_hand/assets/f_middle.obj"/>
+    <mesh name="hand:f_distal_pst" class="hand:right_hand" file="shadow_hand/assets/f_distal_pst.obj"/>
+    <mesh name="hand:lf_metacarpal" class="hand:right_hand" file="shadow_hand/assets/lf_metacarpal.obj"/>
+    <mesh name="hand:th_proximal" class="hand:right_hand" file="shadow_hand/assets/th_proximal.obj"/>
+    <mesh name="hand:th_middle" class="hand:right_hand" file="shadow_hand/assets/th_middle.obj"/>
+    <mesh name="hand:th_distal_pst" class="hand:right_hand" file="shadow_hand/assets/th_distal_pst.obj"/>
+  </asset>
+
+  <worldbody>
+    <light name="spotlight" target="wrist_2_link" pos="0 -1 2" dir="0 0 -1" mode="targetbodycom"/>
+    <body name="base" childclass="ur10e" quat="0 0 0 -1">
+      <inertial pos="0 0 0" mass="4" diaginertia="0.00610633 0.00610633 0.01125"/>
+      <geom class="visual" material="black" mesh="base_0"/>
+      <geom class="visual" material="jointgray" mesh="base_1"/>
+      <body name="shoulder_link" pos="0 0 0.181">
+        <inertial pos="0 0 0" mass="7.778" diaginertia="0.0314743 0.0314743 0.0218756"/>
+        <joint name="shoulder_pan_joint" class="size4" pos="0 0 0" axis="0 0 1"/>
+        <geom class="visual" material="urblue" mesh="shoulder_0"/>
+        <geom class="visual" material="black" mesh="shoulder_1"/>
+        <geom class="visual" material="jointgray" mesh="shoulder_2"/>
+        <geom class="collision" size="0.078 0.08" pos="0 0 -0.05"/>
+        <body name="upper_arm_link" pos="0 0.176 0" quat="0.707107 0 0.707107 0">
+          <inertial pos="0 0 0.3065" mass="12.93" diaginertia="0.423074 0.423074 0.0363656"/>
+          <joint name="shoulder_lift_joint" class="size4" pos="0 0 0" axis="0 1 0"/>
+          <geom class="visual" material="black" mesh="upperarm_0"/>
+          <geom class="visual" material="jointgray" mesh="upperarm_1"/>
+          <geom class="visual" material="urblue" mesh="upperarm_2"/>
+          <geom class="visual" material="linkgray" mesh="upperarm_3"/>
+          <geom class="collision" size="0.078 0.08" pos="0 -0.05 0" quat="0.707107 0.707107 0 0"/>
+          <geom class="collision" size="0.06 0.3" pos="0 0 0.3"/>
+          <body name="forearm_link" pos="0 -0.137 0.613">
+            <inertial pos="0 0 0.2855" mass="3.87" diaginertia="0.11059 0.11059 0.0108844"/>
+            <joint name="elbow_joint" class="size3_limited" pos="0 0 0" axis="0 1 0"/>
+            <geom class="visual" material="urblue" mesh="forearm_0"/>
+            <geom class="visual" material="black" mesh="forearm_1"/>
+            <geom class="visual" material="jointgray" mesh="forearm_2"/>
+            <geom class="visual" material="linkgray" mesh="forearm_3"/>
+            <geom class="collision" size="0.058 0.065" pos="0 0.08 0" quat="0.707107 0.707107 0 0"/>
+            <geom class="collision" size="0.043 0.28" pos="0 0 0.29"/>
+            <body name="wrist_1_link" pos="0 0 0.571" quat="0.707107 0 0.707107 0">
+              <inertial pos="0 0.135 0" quat="0.5 0.5 -0.5 0.5" mass="1.96" diaginertia="0.0055125 0.00510825 0.00510825"/>
+              <joint name="wrist_1_joint" class="size2" pos="0 0 0" axis="0 1 0"/>
+              <geom class="visual" material="black" mesh="wrist1_0"/>
+              <geom class="visual" material="urblue" mesh="wrist1_1"/>
+              <geom class="visual" material="jointgray" mesh="wrist1_2"/>
+              <geom class="collision" size="0.05 0.07" pos="0 0.06 0" quat="0.707107 0.707107 0 0"/>
+              <body name="wrist_2_link" pos="0 0.135 0">
+                <inertial pos="0 0 0.12" quat="0.5 0.5 -0.5 0.5" mass="1.96" diaginertia="0.0055125 0.00510825 0.00510825"/>
+                <joint name="wrist_2_joint" class="size2" pos="0 0 0" axis="0 0 1"/>
+                <geom class="visual" material="black" mesh="wrist2_0"/>
+                <geom class="visual" material="urblue" mesh="wrist2_1"/>
+                <geom class="visual" material="jointgray" mesh="wrist2_2"/>
+                <geom class="collision" size="0.046 0.065" pos="0 0 0.05"/>
+                <geom class="collision" size="0.046 0.043" pos="0 0.028 0.12" quat="0.707107 0.707107 0 0"/>
+                <body name="wrist_3_link" pos="0 0 0.12">
+                  <inertial pos="0 0.092 0" quat="0 0.707107 -0.707107 0" mass="0.202" diaginertia="0.000204525 0.000144346 0.000144346"/>
+                  <joint name="wrist_3_joint" class="size2" pos="0 0 0" axis="0 1 0"/>
+                  <geom class="visual" material="linkgray" mesh="wrist3"/>
+                  <geom class="eef_collision" size="0.046 0.02" pos="0 0.097 0" quat="0.707107 0.707107 0 0"/>
+                  <site name="attachment_site" pos="0 0.1 0" quat="-0.707107 0.707107 0 0"/>
+                  <body name="hand:world" pos="0 0.1 0" quat="0 0.707107 0.707107 0">
+                    <body name="hand:rh_forearm" childclass="hand:right_hand" quat="0 0.707107 0 0.707107">
+                      <inertial pos="0 0 0.09" mass="3" diaginertia="0.0138 0.0138 0.00744"/>
+                      <geom class="hand:plastic_visual" material="hand:gray" mesh="hand:forearm_0"/>
+                      <geom class="hand:plastic_visual" material="hand:black" mesh="hand:forearm_1"/>
+                      <geom class="hand:plastic_collision" type="mesh" mesh="hand:forearm_collision"/>
+                      <geom class="hand:plastic_collision" size="0.035 0.035 0.035" pos="0.01 0 0.181" quat="0.380188 0.924909 0 0" type="box"/>
+                      <body name="hand:rh_wrist" pos="0.01 0 0.21301" quat="0.707107 0 0 0.707107">
+                        <inertial pos="0 0 0.029" quat="0.5 0.5 0.5 0.5" mass="0.1" diaginertia="6.4e-05 4.38e-05 3.5e-05"/>
+                        <joint name="hand:rh_WRJ2" class="hand:wrist_y" pos="0 0 0" axis="0 1 0"/>
+                        <geom class="hand:plastic_visual" material="hand:metallic" mesh="hand:wrist"/>
+                        <geom class="hand:plastic_collision" size="0.0135 0.015" quat="0.499998 0.5 0.5 -0.500002" type="cylinder"/>
+                        <geom class="hand:plastic_collision" size="0.011 0.005" pos="-0.026 0 0.034" quat="0.707107 0 0.707107 0" type="cylinder"/>
+                        <geom class="hand:plastic_collision" size="0.011 0.005" pos="0.031 0 0.034" quat="0.707107 0 0.707107 0" type="cylinder"/>
+                        <geom class="hand:plastic_collision" size="0.0135 0.009 0.005" pos="-0.021 0 0.011" quat="0.923879 0 0.382684 0" type="box"/>
+                        <geom class="hand:plastic_collision" size="0.0135 0.009 0.005" pos="0.026 0 0.01" quat="0.923879 0 -0.382684 0" type="box"/>
+                        <body name="hand:rh_palm" pos="0 0 0.034">
+                          <inertial pos="0 0 0.035" quat="0.707107 0 0 0.707107" mass="0.3" diaginertia="0.0005287 0.0003581 0.000191"/>
+                          <joint name="hand:rh_WRJ1" class="hand:wrist_x" pos="0 0 0" axis="1 0 0"/>
+                          <geom class="hand:plastic_visual" material="hand:black" mesh="hand:palm"/>
+                          <geom class="hand:plastic_collision" size="0.031 0.0035 0.049" pos="0.011 0.0085 0.038" type="box"/>
+                          <geom class="hand:plastic_collision" size="0.018 0.0085 0.049" pos="-0.002 -0.0035 0.038" type="box"/>
+                          <geom class="hand:plastic_collision" size="0.013 0.0085 0.005" pos="0.029 -0.0035 0.082" type="box"/>
+                          <geom class="hand:plastic_collision" size="0.013 0.007 0.009" pos="0.0265 -0.001 0.07" quat="0.987241 0.0990545 0.0124467 0.124052" type="box"/>
+                          <geom class="hand:plastic_collision" size="0.0105 0.0135 0.012" pos="0.0315 -0.0085 0.001" type="box"/>
+                          <geom class="hand:plastic_collision" size="0.011 0.0025 0.015" pos="0.0125 -0.015 0.004" quat="0.971338 0 0 -0.237703" type="box"/>
+                          <geom class="hand:plastic_collision" size="0.009 0.012 0.002" pos="0.011 0 0.089" type="box"/>
+                          <geom class="hand:plastic_collision" size="0.01 0.012 0.02" pos="-0.03 0 0.009" type="box"/>
+                          <site name="hand:grasp_site" pos="0 -0.035 0.09" group="4"/>
+                          <body name="hand:rh_ffknuckle" pos="0.033 0 0.095">
+                            <inertial pos="0 0 0" quat="0.5 0.5 -0.5 0.5" mass="0.008" diaginertia="3.2e-07 2.6e-07 2.6e-07"/>
+                            <joint name="hand:rh_FFJ4" class="hand:knuckle" pos="0 0 0" axis="0 -1 0"/>
+                            <geom class="hand:plastic_visual" pos="0 0 0.0005" material="hand:metallic" mesh="hand:f_knuckle"/>
+                            <geom class="hand:plastic_collision" size="0.009 0.009" quat="0.707107 0 0.707107 0" type="cylinder"/>
+                            <body name="hand:rh_ffproximal">
+                              <inertial pos="0 0 0.0225" quat="0.707107 0 0 0.707107" mass="0.03" diaginertia="1e-05 9.8e-06 1.8e-06"/>
+                              <joint name="hand:rh_FFJ3" class="hand:proximal" pos="0 0 0" axis="1 0 0"/>
+                              <geom class="hand:plastic_visual" material="hand:black" mesh="hand:f_proximal"/>
+                              <geom class="hand:plastic_collision" size="0.009 0.02" pos="0 0 0.025" type="capsule"/>
+                              <site name="hand:coupling_FFJ3_tendon_end" class="hand:coupling_tendon" pos="0 -0.007 0.023"/>
+                              <body name="hand:rh_ffmiddle" pos="0 0 0.045">
+                                <inertial pos="0 0 0.0125" quat="0.707107 0 0 0.707107" mass="0.017" diaginertia="2.7e-06 2.6e-06 8.7e-07"/>
+                                <joint name="hand:rh_FFJ2" class="hand:middle_distal" pos="0 0 0" axis="1 0 0"/>
+                                <geom class="hand:plastic_visual" material="hand:black" mesh="hand:f_middle"/>
+                                <geom class="hand:plastic_collision" size="0.009 0.0125" pos="0 0 0.0125" type="capsule"/>
+                                <geom name="hand:coupling_FFJ2_pulley" class="hand:coupling_tendon" size="0.01125 0.01" quat="0.707107 0 -0.707107 0"/>
+                                <site name="hand:coupling_FFJ2_pulley_inside" class="hand:coupling_tendon" pos="0 -0.011 0.011"/>
+                                <site name="hand:coupling_FFJ2_between_pulleys" class="hand:coupling_tendon" pos="0 -0.005 0.008"/>
+                                <body name="hand:rh_ffdistal" pos="0 0 0.025">
+                                  <inertial pos="0 0 0.0130769" quat="0.707107 0 0 0.707107" mass="0.013" diaginertia="1.28092e-06 1.12092e-06 5.3e-07"/>
+                                  <joint name="hand:rh_FFJ1" class="hand:middle_distal" pos="0 0 0" axis="1 0 0"/>
+                                  <geom class="hand:plastic_visual" material="hand:black" mesh="hand:f_distal_pst"/>
+                                  <geom class="hand:plastic_collision" type="mesh" mesh="hand:f_distal_pst"/>
+                                  <geom name="hand:coupling_FFJ1_pulley" class="hand:coupling_tendon" size="0.008929 0.01" quat="0.707107 0 -0.707107 0"/>
+                                  <site name="hand:coupling_FFJ1_pulley_outside" class="hand:coupling_tendon" pos="0 0.01 -0.01"/>
+                                  <site name="hand:coupling_FFJ1_tendon_end" class="hand:coupling_tendon" pos="0 0.007 0.015"/>
+                                </body>
+                              </body>
+                            </body>
+                          </body>
+                          <body name="hand:rh_mfknuckle" pos="0.011 0 0.099">
+                            <inertial pos="0 0 0" quat="0.5 0.5 -0.5 0.5" mass="0.008" diaginertia="3.2e-07 2.6e-07 2.6e-07"/>
+                            <joint name="hand:rh_MFJ4" class="hand:knuckle" pos="0 0 0" axis="0 -1 0"/>
+                            <geom class="hand:plastic_visual" pos="0 0 0.0005" material="hand:metallic" mesh="hand:f_knuckle"/>
+                            <geom class="hand:plastic_collision" size="0.009 0.009" quat="0.707107 0 0.707107 0" type="cylinder"/>
+                            <body name="hand:rh_mfproximal">
+                              <inertial pos="0 0 0.0225" quat="0.707107 0 0 0.707107" mass="0.03" diaginertia="1e-05 9.8e-06 1.8e-06"/>
+                              <joint name="hand:rh_MFJ3" class="hand:proximal" pos="0 0 0" axis="1 0 0"/>
+                              <geom class="hand:plastic_visual" material="hand:black" mesh="hand:f_proximal"/>
+                              <geom class="hand:plastic_collision" size="0.009 0.02" pos="0 0 0.025" type="capsule"/>
+                              <site name="hand:coupling_MFJ3_tendon_end" class="hand:coupling_tendon" pos="0 -0.007 0.023"/>
+                              <body name="hand:rh_mfmiddle" pos="0 0 0.045">
+                                <inertial pos="0 0 0.0125" quat="0.707107 0 0 0.707107" mass="0.017" diaginertia="2.7e-06 2.6e-06 8.7e-07"/>
+                                <joint name="hand:rh_MFJ2" class="hand:middle_distal" pos="0 0 0" axis="1 0 0"/>
+                                <geom class="hand:plastic_visual" material="hand:black" mesh="hand:f_middle"/>
+                                <geom class="hand:plastic_collision" size="0.009 0.0125" pos="0 0 0.0125" type="capsule"/>
+                                <geom name="hand:coupling_MFJ2_pulley" class="hand:coupling_tendon" size="0.01125 0.01" quat="0.707107 0 -0.707107 0"/>
+                                <site name="hand:coupling_MFJ2_pulley_inside" class="hand:coupling_tendon" pos="0 -0.011 0.011"/>
+                                <site name="hand:coupling_MFJ2_between_pulleys" class="hand:coupling_tendon" pos="0 -0.005 0.008"/>
+                                <body name="hand:rh_mfdistal" pos="0 0 0.025">
+                                  <inertial pos="0 0 0.0130769" quat="0.707107 0 0 0.707107" mass="0.013" diaginertia="1.28092e-06 1.12092e-06 5.3e-07"/>
+                                  <joint name="hand:rh_MFJ1" class="hand:middle_distal" pos="0 0 0" axis="1 0 0"/>
+                                  <geom class="hand:plastic_visual" material="hand:black" mesh="hand:f_distal_pst"/>
+                                  <geom class="hand:plastic_collision" type="mesh" mesh="hand:f_distal_pst"/>
+                                  <geom name="hand:coupling_MFJ1_pulley" class="hand:coupling_tendon" size="0.008929 0.01" quat="0.707107 0 -0.707107 0"/>
+                                  <site name="hand:coupling_MFJ1_pulley_outside" class="hand:coupling_tendon" pos="0 0.01 -0.01"/>
+                                  <site name="hand:coupling_MFJ1_tendon_end" class="hand:coupling_tendon" pos="0 0.007 0.015"/>
+                                </body>
+                              </body>
+                            </body>
+                          </body>
+                          <body name="hand:rh_rfknuckle" pos="-0.011 0 0.095">
+                            <inertial pos="0 0 0" quat="0.5 0.5 -0.5 0.5" mass="0.008" diaginertia="3.2e-07 2.6e-07 2.6e-07"/>
+                            <joint name="hand:rh_RFJ4" class="hand:knuckle" pos="0 0 0" axis="0 1 0"/>
+                            <geom class="hand:plastic_visual" pos="0 0 0.0005" material="hand:metallic" mesh="hand:f_knuckle"/>
+                            <geom class="hand:plastic_collision" size="0.009 0.009" quat="0.707107 0 0.707107 0" type="cylinder"/>
+                            <body name="hand:rh_rfproximal">
+                              <inertial pos="0 0 0.0225" quat="0.707107 0 0 0.707107" mass="0.03" diaginertia="1e-05 9.8e-06 1.8e-06"/>
+                              <joint name="hand:rh_RFJ3" class="hand:proximal" pos="0 0 0" axis="1 0 0"/>
+                              <geom class="hand:plastic_visual" material="hand:black" mesh="hand:f_proximal"/>
+                              <geom class="hand:plastic_collision" size="0.009 0.02" pos="0 0 0.025" type="capsule"/>
+                              <site name="hand:coupling_RFJ3_tendon_end" class="hand:coupling_tendon" pos="0 -0.007 0.023"/>
+                              <body name="hand:rh_rfmiddle" pos="0 0 0.045">
+                                <inertial pos="0 0 0.0125" quat="0.707107 0 0 0.707107" mass="0.017" diaginertia="2.7e-06 2.6e-06 8.7e-07"/>
+                                <joint name="hand:rh_RFJ2" class="hand:middle_distal" pos="0 0 0" axis="1 0 0"/>
+                                <geom class="hand:plastic_visual" material="hand:black" mesh="hand:f_middle"/>
+                                <geom class="hand:plastic_collision" size="0.009 0.0125" pos="0 0 0.0125" type="capsule"/>
+                                <geom name="hand:coupling_RFJ2_pulley" class="hand:coupling_tendon" size="0.01125 0.01" quat="0.707107 0 -0.707107 0"/>
+                                <site name="hand:coupling_RFJ2_pulley_inside" class="hand:coupling_tendon" pos="0 -0.011 0.011"/>
+                                <site name="hand:coupling_RFJ2_between_pulleys" class="hand:coupling_tendon" pos="0 -0.005 0.008"/>
+                                <body name="hand:rh_rfdistal" pos="0 0 0.025">
+                                  <inertial pos="0 0 0.0130769" quat="0.707107 0 0 0.707107" mass="0.013" diaginertia="1.28092e-06 1.12092e-06 5.3e-07"/>
+                                  <joint name="hand:rh_RFJ1" class="hand:middle_distal" pos="0 0 0" axis="1 0 0"/>
+                                  <geom class="hand:plastic_visual" material="hand:black" mesh="hand:f_distal_pst"/>
+                                  <geom class="hand:plastic_collision" type="mesh" mesh="hand:f_distal_pst"/>
+                                  <geom name="hand:coupling_RFJ1_pulley" class="hand:coupling_tendon" size="0.008929 0.01" quat="0.707107 0 -0.707107 0"/>
+                                  <site name="hand:coupling_RFJ1_pulley_outside" class="hand:coupling_tendon" pos="0 0.01 -0.01"/>
+                                  <site name="hand:coupling_RFJ1_tendon_end" class="hand:coupling_tendon" pos="0 0.007 0.015"/>
+                                </body>
+                              </body>
+                            </body>
+                          </body>
+                          <body name="hand:rh_lfmetacarpal" pos="-0.033 0 0.02071">
+                            <inertial pos="0 0 0.04" quat="0.707107 0 0 0.707107" mass="0.03" diaginertia="1.638e-05 1.45e-05 4.272e-06"/>
+                            <joint name="hand:rh_LFJ5" class="hand:metacarpal" pos="0 0 0" axis="0.573576 0 0.819152"/>
+                            <geom class="hand:plastic_visual" material="hand:black" mesh="hand:lf_metacarpal"/>
+                            <geom class="hand:plastic_collision" size="0.011 0.012 0.025" pos="0.002 0 0.033" type="box"/>
+                            <body name="hand:rh_lfknuckle" pos="0 0 0.06579">
+                              <inertial pos="0 0 0" quat="0.5 0.5 -0.5 0.5" mass="0.008" diaginertia="3.2e-07 2.6e-07 2.6e-07"/>
+                              <joint name="hand:rh_LFJ4" class="hand:knuckle" pos="0 0 0" axis="0 1 0"/>
+                              <geom class="hand:plastic_visual" pos="0 0 0.0005" material="hand:metallic" mesh="hand:f_knuckle"/>
+                              <geom class="hand:plastic_collision" size="0.009 0.009" quat="0.707107 0 0.707107 0" type="cylinder"/>
+                              <body name="hand:rh_lfproximal">
+                                <inertial pos="0 0 0.0225" quat="0.707107 0 0 0.707107" mass="0.03" diaginertia="1e-05 9.8e-06 1.8e-06"/>
+                                <joint name="hand:rh_LFJ3" class="hand:proximal" pos="0 0 0" axis="1 0 0"/>
+                                <geom class="hand:plastic_visual" material="hand:black" mesh="hand:f_proximal"/>
+                                <geom class="hand:plastic_collision" size="0.009 0.02" pos="0 0 0.025" type="capsule"/>
+                                <site name="hand:coupling_LFJ3_tendon_end" class="hand:coupling_tendon" pos="0 -0.007 0.023"/>
+                                <body name="hand:rh_lfmiddle" pos="0 0 0.045">
+                                  <inertial pos="0 0 0.0125" quat="0.707107 0 0 0.707107" mass="0.017" diaginertia="2.7e-06 2.6e-06 8.7e-07"/>
+                                  <joint name="hand:rh_LFJ2" class="hand:middle_distal" pos="0 0 0" axis="1 0 0"/>
+                                  <geom class="hand:plastic_visual" material="hand:black" mesh="hand:f_middle"/>
+                                  <geom class="hand:plastic_collision" size="0.009 0.0125" pos="0 0 0.0125" type="capsule"/>
+                                  <geom name="hand:coupling_LFJ2_pulley" class="hand:coupling_tendon" size="0.01125 0.01" quat="0.707107 0 -0.707107 0"/>
+                                  <site name="hand:coupling_LFJ2_pulley_inside" class="hand:coupling_tendon" pos="0 -0.011 0.011"/>
+                                  <site name="hand:coupling_LFJ2_between_pulleys" class="hand:coupling_tendon" pos="0 -0.005 0.008"/>
+                                  <body name="hand:rh_lfdistal" pos="0 0 0.025">
+                                    <inertial pos="0 0 0.0130769" quat="0.707107 0 0 0.707107" mass="0.013" diaginertia="1.28092e-06 1.12092e-06 5.3e-07"/>
+                                    <joint name="hand:rh_LFJ1" class="hand:middle_distal" pos="0 0 0" axis="1 0 0"/>
+                                    <geom class="hand:plastic_visual" material="hand:black" mesh="hand:f_distal_pst"/>
+                                    <geom class="hand:plastic_collision" type="mesh" mesh="hand:f_distal_pst"/>
+                                    <geom name="hand:coupling_LFJ1_pulley" class="hand:coupling_tendon" size="0.008929 0.01" quat="0.707107 0 -0.707107 0"/>
+                                    <site name="hand:coupling_LFJ1_pulley_outside" class="hand:coupling_tendon" pos="0 0.01 -0.01"/>
+                                    <site name="hand:coupling_LFJ1_tendon_end" class="hand:coupling_tendon" pos="0 0.007 0.015"/>
+                                  </body>
+                                </body>
+                              </body>
+                            </body>
+                          </body>
+                          <body name="hand:rh_thbase" pos="0.034 -0.00858 0.029" quat="0.92388 0 0.382683 0">
+                            <inertial pos="0 0 0" mass="0.01" diaginertia="1.6e-07 1.6e-07 1.6e-07"/>
+                            <joint name="hand:rh_THJ5" class="hand:thbase" pos="0 0 0" axis="0 0 -1"/>
+                            <geom class="hand:plastic_collision" size="0.013"/>
+                            <body name="hand:rh_thproximal">
+                              <inertial pos="0 0 0.019" mass="0.04" diaginertia="1.36e-05 1.36e-05 3.13e-06"/>
+                              <joint name="hand:rh_THJ4" class="hand:thproximal" pos="0 0 0" axis="1 0 0"/>
+                              <geom class="hand:plastic_visual" material="hand:black" mesh="hand:th_proximal"/>
+                              <geom class="hand:plastic_collision" size="0.0105 0.009" pos="0 0 0.02" type="capsule"/>
+                              <body name="hand:rh_thhub" pos="0 0 0.038">
+                                <inertial pos="0 0 0" mass="0.005" diaginertia="1e-06 1e-06 3e-07"/>
+                                <joint name="hand:rh_THJ3" class="hand:thhub" pos="0 0 0" axis="1 0 0"/>
+                                <geom class="hand:plastic_collision" size="0.011"/>
+                                <body name="hand:rh_thmiddle">
+                                  <inertial pos="0 0 0.016" mass="0.02" diaginertia="5.1e-06 5.1e-06 1.21e-06"/>
+                                  <joint name="hand:rh_THJ2" class="hand:thmiddle" pos="0 0 0" axis="0 -1 0"/>
+                                  <geom class="hand:plastic_visual" material="hand:black" mesh="hand:th_middle"/>
+                                  <geom class="hand:plastic_collision" size="0.009 0.009" pos="0 0 0.012" type="capsule"/>
+                                  <geom class="hand:plastic_collision" size="0.01" pos="0 0 0.03"/>
+                                  <body name="hand:rh_thdistal" pos="0 0 0.032" quat="0.707107 0 0 -0.707107">
+                                    <inertial pos="0 0 0.0145588" quat="0.707107 0 0 0.707107" mass="0.017" diaginertia="2.37794e-06 2.27794e-06 1e-06"/>
+                                    <joint name="hand:rh_THJ1" class="hand:thdistal" pos="0 0 0" axis="1 0 0"/>
+                                    <geom class="hand:plastic_visual" material="hand:black" mesh="hand:th_distal_pst"/>
+                                    <geom class="hand:plastic_collision" type="mesh" mesh="hand:th_distal_pst"/>
+                                  </body>
+                                </body>
+                              </body>
+                            </body>
+                          </body>
+                        </body>
+                      </body>
+                    </body>
+                  </body>
+                </body>
+              </body>
+            </body>
+          </body>
+        </body>
+      </body>
+    </body>
+  </worldbody>
+
+  <contact>
+    <exclude body1="hand:rh_forearm" body2="hand:rh_wrist"/>
+    <exclude body1="hand:rh_forearm" body2="hand:rh_palm"/>
+    <exclude body1="hand:rh_palm" body2="hand:rh_ffproximal"/>
+    <exclude body1="hand:rh_palm" body2="hand:rh_mfproximal"/>
+    <exclude body1="hand:rh_palm" body2="hand:rh_rfproximal"/>
+    <exclude body1="hand:rh_palm" body2="hand:rh_thproximal"/>
+    <exclude body1="hand:rh_ffknuckle" body2="hand:rh_mfknuckle"/>
+    <exclude body1="hand:rh_mfknuckle" body2="hand:rh_rfknuckle"/>
+    <exclude body1="hand:rh_rfknuckle" body2="hand:rh_lfknuckle"/>
+    <exclude body1="hand:rh_lfmetacarpal" body2="hand:rh_lfproximal"/>
+    <exclude body1="hand:rh_thproximal" body2="hand:rh_thmiddle"/>
+  </contact>
+
+  <tendon>
+    <fixed name="hand:rh_FFT0" group="4" range="0 1.5707">
+      <joint joint="hand:rh_FFJ2" coef="1"/>
+      <joint joint="hand:rh_FFJ1" coef="-1"/>
+    </fixed>
+    <fixed name="hand:rh_FFT1" group="4" range="0 3.14159">
+      <joint joint="hand:rh_FFJ2" coef="1"/>
+      <joint joint="hand:rh_FFJ1" coef="1"/>
+    </fixed>
+    <spatial name="hand:rh_FFT2" range="0 0.080876" stiffness="3019.13" springlength="0.06" width="0.0005">
+      <site site="hand:coupling_FFJ1_tendon_end"/>
+      <geom geom="hand:coupling_FFJ1_pulley" sidesite="hand:coupling_FFJ1_pulley_outside"/>
+      <site site="hand:coupling_FFJ2_between_pulleys"/>
+      <geom geom="hand:coupling_FFJ2_pulley" sidesite="hand:coupling_FFJ2_pulley_inside"/>
+      <site site="hand:coupling_FFJ3_tendon_end"/>
+    </spatial>
+    <fixed name="hand:rh_MFT0" group="4" range="0 1.5707">
+      <joint joint="hand:rh_MFJ2" coef="1"/>
+      <joint joint="hand:rh_MFJ1" coef="-1"/>
+    </fixed>
+    <fixed name="hand:rh_MFT1" group="4" range="0 3.14159">
+      <joint joint="hand:rh_MFJ2" coef="1"/>
+      <joint joint="hand:rh_MFJ1" coef="1"/>
+    </fixed>
+    <spatial name="hand:rh_MFT2" range="0 0.080876" stiffness="4023.08" springlength="0.059349" width="0.0005">
+      <site site="hand:coupling_MFJ1_tendon_end"/>
+      <geom geom="hand:coupling_MFJ1_pulley" sidesite="hand:coupling_MFJ1_pulley_outside"/>
+      <site site="hand:coupling_MFJ2_between_pulleys"/>
+      <geom geom="hand:coupling_MFJ2_pulley" sidesite="hand:coupling_MFJ2_pulley_inside"/>
+      <site site="hand:coupling_MFJ3_tendon_end"/>
+    </spatial>
+    <fixed name="hand:rh_RFT0" group="4" range="0 1.5707">
+      <joint joint="hand:rh_RFJ2" coef="1"/>
+      <joint joint="hand:rh_RFJ1" coef="-1"/>
+    </fixed>
+    <fixed name="hand:rh_RFT1" group="4" range="0 3.14159">
+      <joint joint="hand:rh_RFJ2" coef="1"/>
+      <joint joint="hand:rh_RFJ1" coef="1"/>
+    </fixed>
+    <spatial name="hand:rh_RFT2" range="0 0.080876" stiffness="3027.56" springlength="0.056161" width="0.0005">
+      <site site="hand:coupling_RFJ1_tendon_end"/>
+      <geom geom="hand:coupling_RFJ1_pulley" sidesite="hand:coupling_RFJ1_pulley_outside"/>
+      <site site="hand:coupling_RFJ2_between_pulleys"/>
+      <geom geom="hand:coupling_RFJ2_pulley" sidesite="hand:coupling_RFJ2_pulley_inside"/>
+      <site site="hand:coupling_RFJ3_tendon_end"/>
+    </spatial>
+    <fixed name="hand:rh_LFT0" group="4" range="0 1.5707">
+      <joint joint="hand:rh_LFJ2" coef="1"/>
+      <joint joint="hand:rh_LFJ1" coef="-1"/>
+    </fixed>
+    <fixed name="hand:rh_LFT1" group="4" range="0 3.14159">
+      <joint joint="hand:rh_LFJ2" coef="1"/>
+      <joint joint="hand:rh_LFJ1" coef="1"/>
+    </fixed>
+    <spatial name="hand:rh_LFT2" range="0 0.080876" stiffness="3493.57" springlength="0.059417" width="0.0005">
+      <site site="hand:coupling_LFJ1_tendon_end"/>
+      <geom geom="hand:coupling_LFJ1_pulley" sidesite="hand:coupling_LFJ1_pulley_outside"/>
+      <site site="hand:coupling_LFJ2_between_pulleys"/>
+      <geom geom="hand:coupling_LFJ2_pulley" sidesite="hand:coupling_LFJ2_pulley_inside"/>
+      <site site="hand:coupling_LFJ3_tendon_end"/>
+    </spatial>
+  </tendon>
+
+  <actuator>
+    <general name="shoulder_pan" class="size4" joint="shoulder_pan_joint"/>
+    <general name="shoulder_lift" class="size4" joint="shoulder_lift_joint"/>
+    <general name="elbow" class="size3_limited" joint="elbow_joint"/>
+    <general name="wrist_1" class="size2" joint="wrist_1_joint"/>
+    <general name="wrist_2" class="size2" joint="wrist_2_joint"/>
+    <general name="wrist_3" class="size2" joint="wrist_3_joint"/>
+    <general name="hand:rh_A_WRJ2" class="hand:wrist_y" joint="hand:rh_WRJ2"/>
+    <general name="hand:rh_A_WRJ1" class="hand:wrist_x" joint="hand:rh_WRJ1"/>
+    <general name="hand:rh_A_THJ5" class="hand:thbase" joint="hand:rh_THJ5"/>
+    <general name="hand:rh_A_THJ4" class="hand:thproximal" joint="hand:rh_THJ4"/>
+    <general name="hand:rh_A_THJ3" class="hand:thhub" joint="hand:rh_THJ3"/>
+    <general name="hand:rh_A_THJ2" class="hand:thmiddle" joint="hand:rh_THJ2"/>
+    <general name="hand:rh_A_THJ1" class="hand:thdistal" joint="hand:rh_THJ1"/>
+    <general name="hand:rh_A_FFJ4" class="hand:knuckle" joint="hand:rh_FFJ4"/>
+    <general name="hand:rh_A_FFJ3" class="hand:proximal" joint="hand:rh_FFJ3"/>
+    <general name="hand:rh_A_FFJ0" class="hand:middle_distal" tendon="hand:rh_FFT1" forcerange="-0.465773 0.465773"/>
+    <general name="hand:rh_A_MFJ4" class="hand:knuckle" joint="hand:rh_MFJ4"/>
+    <general name="hand:rh_A_MFJ3" class="hand:proximal" joint="hand:rh_MFJ3"/>
+    <general name="hand:rh_A_MFJ0" class="hand:middle_distal" tendon="hand:rh_MFT1" forcerange="-0.616938 0.616938"/>
+    <general name="hand:rh_A_RFJ4" class="hand:knuckle" joint="hand:rh_RFJ4"/>
+    <general name="hand:rh_A_RFJ3" class="hand:proximal" joint="hand:rh_RFJ3"/>
+    <general name="hand:rh_A_RFJ0" class="hand:middle_distal" tendon="hand:rh_RFT1" forcerange="-0.464343 0.464343"/>
+    <general name="hand:rh_A_LFJ5" class="hand:metacarpal" joint="hand:rh_LFJ5"/>
+    <general name="hand:rh_A_LFJ4" class="hand:knuckle" joint="hand:rh_LFJ4"/>
+    <general name="hand:rh_A_LFJ3" class="hand:proximal" joint="hand:rh_LFJ3"/>
+    <general name="hand:rh_A_LFJ0" class="hand:middle_distal" tendon="hand:rh_LFT1" forcerange="-0.506173 0.506173"/>
+  </actuator>
+
+  <keyframe>
+    <key name="home" qpos="-1.5708 -1.5708 1.5708 -1.5708 -1.5708 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0" ctrl="-1.5708 -1.5708 1.5708 -1.5708 -1.5708 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"/>
+  </keyframe>
+</mujoco>

@@ -14,36 +14,39 @@ def get_full_traj(
     squeeze_qpos,
     pregrasp_qpos,
     approach_qpos=None,
-    move_qpos=None,
+    move_step=10,
 ):
     qpos_lst = []
     interp_lst = []
     extdir_lst = []
+    ctype_lst = []
     if approach_qpos is not None:
-        qpos_lst.append(approach_qpos)
-        interp_lst.extend(
-            [3 if i % 5 == 4 else 1 for i in range(approach_qpos.shape[0])]
-        )
-        extdir_lst.extend([None] * approach_qpos.shape[0])
+        qpos_lst.extend(list(approach_qpos))
+        approach_num = approach_qpos.shape[0] - 1
+        interp_lst.extend([3 if i % 5 == 4 else 1 for i in range(approach_num)])
+        extdir_lst.extend([None] * approach_num)
+        ctype_lst.extend(["joint_angle"] * approach_num)
 
-    qpos_lst.append(pregrasp_qpos)
     interp_lst.extend([3] * pregrasp_qpos.shape[0])
     extdir_lst.extend([None] * pregrasp_qpos.shape[0])
+    ctype_lst.extend(["ee_pose"] * pregrasp_qpos.shape[0])
+    qpos_lst.extend(list(pregrasp_qpos))
 
-    qpos_lst.append(grasp_qpos)
+    interp_lst.extend([3])
+    extdir_lst.extend([None])
+    ctype_lst.extend(["ee_pose"])
+    qpos_lst.extend(list(grasp_qpos))
     interp_lst.extend([10])
     extdir_lst.extend([None])
-    qpos_lst.append(squeeze_qpos)
+    ctype_lst.extend(["ee_pose"])
+    qpos_lst.extend(list(squeeze_qpos))
 
     if move_cfg["type"] != "force_closure":
-        if move_qpos is None:
-            move_step = 10
-            move_qpos = np.repeat(squeeze_qpos, move_step, axis=0)
-            move_qpos[:, :7] = interp_move_traj(
-                squeeze_qpos[0, :7], move_cfg, move_step
-            )
-        qpos_lst.append(move_qpos)
+        move_qpos = np.repeat(squeeze_qpos, move_step, axis=0)
+        move_qpos[:, :7] = interp_move_traj(squeeze_qpos[0, :7], move_cfg, move_step)
+        qpos_lst.extend(list(move_qpos))
         interp_lst.extend([3] * move_qpos.shape[0])
+        ctype_lst.extend(["ee_pose"] * move_qpos.shape[0])
         move_obj_lst = interp_move_traj(init_obj_pose, move_cfg, move_step)
         target_obj_pose = move_obj_lst[-1]
         if move_cfg["type"] == "slide":
@@ -59,8 +62,7 @@ def get_full_traj(
             )
     else:
         target_obj_pose = init_obj_pose
-    qpos_lst = np.concatenate(qpos_lst, axis=0)
-    return qpos_lst, extdir_lst, interp_lst, target_obj_pose
+    return qpos_lst, ctype_lst, extdir_lst, interp_lst, target_obj_pose
 
 
 def interp_move_traj(init_pose: np.ndarray, move_cfg: dict, step: int):
