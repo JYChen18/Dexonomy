@@ -81,7 +81,7 @@ def _single_hand_refine(params):
         obj_margin=task_config.pregrasp.ho_target_dist,
     )
 
-    sim_env.set_ctrl(grasp_data["grasp_qpos"][0])
+    sim_env.reset_qpos(grasp_data["grasp_qpos"][0])
     sim_env.set_obj_margin(task_config.grasp.ho_target_dist)
 
     hand_contact_body_names = grasp_data["hand_contact_body_names"]

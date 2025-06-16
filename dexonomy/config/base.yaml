@@ -4,7 +4,10 @@ save_root: output
 save_dir: ${save_root}/${exp_name}_${hand_name}
 skip: True
 n_worker: 16    
-gpu_list: [1,2,3]  # only used for CSample
+
+syn_obj_gpu: [1,2,3]
+adding_arm: False
+mogen_gpu: [4,5,6]  # only used when adding_arm is True
 
 debug_viewer: False
 debug_render: False

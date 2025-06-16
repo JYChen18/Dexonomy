@@ -2,7 +2,6 @@ import time
 import os
 import sys
 import hydra
-import omegaconf
 import logging
 
 from concurrent.futures import ProcessPoolExecutor
@@ -59,6 +58,20 @@ def run_syn_hand(general_config_str, syn_hand_config_str, test_log_path):
     return
 
 
+def run_mogen(save_dir, grasp_dir, hand_name, gpu_lst, test_log_path):
+    mogen_cmd = f"cd ../BODex && conda run -n bodex python example_grasp/multi_gpu.py \
+    -t mogen_dexonomy \
+    -c {hand_name}/dexonomy.yml \
+    -g {' '.join([str(g) for g in gpu_lst])} \
+    -e {os.path.abspath(save_dir)} \
+    -i '{os.path.abspath(grasp_dir)}/**/*.npy' "
+
+    logging.info(mogen_cmd)
+    while not check_stop(test_log_path):
+        os.system(mogen_cmd)
+    return
+
+
 def run_syn_test(general_config_str, syn_test_config_str, test_log_path):
     syn_test_cmd = f"python -m dexonomy.main task=syn_test {general_config_str} {syn_test_config_str}"
     logging.info(syn_test_cmd)
@@ -104,8 +117,11 @@ def run_together(configs):
         configs.template_name, configs.init_template_dir
     )
     assert len(hand_template_names) <= len(
-        configs.gpu_list
-    ), f"Template number: {len(hand_template_names)}; GPU number: {len(configs.gpu_list)}"
+        configs.syn_obj_gpu
+    ), f"Template number: {len(hand_template_names)}; GPU number: {len(configs.syn_obj_gpu)}"
+    assert (
+        len(set(configs.syn_obj_gpu).intersection(set(configs.mogen_gpu))) == 0
+    ), f"Syn_obj GPU should be different with mogen GPU! Syn_obj: {configs.syn_obj_gpu}; Mogen: {configs.mogen_gpu}"
 
     test_log_path = os.path.join(
         configs.log_dir.replace(configs.task_name, "syn_test"), "main.log"
@@ -137,9 +153,20 @@ def run_together(configs):
                     override_config["general"],
                     override_config["syn_obj"],
                     template_name,
-                    configs.gpu_list[i],
+                    configs.syn_obj_gpu[i],
                     i,
                     obj_log_path,
+                )
+            )
+        if configs.adding_arm:
+            futures.append(
+                executor.submit(
+                    run_mogen,
+                    configs.save_dir,
+                    configs.grasp_dir,
+                    configs.hand_name,
+                    configs.mogen_gpu,
+                    test_log_path,
                 )
             )
 

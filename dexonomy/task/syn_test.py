@@ -12,13 +12,14 @@ from dexonomy.util.traj_util import get_full_traj
 
 def _single_validation(params):
     input_npy_path, configs = params[0], params[1]
-    graspdata_dir = configs.mogen_dir if configs.task.adding_arm else configs.grasp_dir
+    graspdata_dir = configs.mogen_dir if configs.adding_arm else configs.grasp_dir
     task_config = configs.task
     hand_config = configs.hand
 
     grasp_data = np.load(input_npy_path, allow_pickle=True).item()
     scene_cfg = load_scene_cfg(grasp_data["scene_path"])
 
+    plane_flag = False
     for obj_name, obj_cfg in scene_cfg["scene"].items():
         if obj_cfg["type"] == "rigid_object":
             obj_info = load_json(obj_cfg["info_path"])
@@ -28,8 +29,14 @@ def _single_validation(params):
             obj_cfg["density"] = configs.obj_mass / (
                 obj_coef * np.prod(obj_cfg["scale"])
             )
+        elif obj_cfg["type"] == "plane":
+            plane_flag = True
+    if configs.adding_arm and not plane_flag:
+        logging.warning(
+            f"Using an arm but no table is in scene cfg: {grasp_data['scene_path']}"
+        )
 
-    if task_config.adding_arm:
+    if configs.adding_arm:
         hand_xml_path = hand_config.hand_on_arm.xml_path
         hand_arm_ee_name = hand_config.hand_on_arm.ee_name
         hand_arm_exclude_table_contact = hand_config.hand_on_arm.exclude_table_contact
@@ -39,7 +46,7 @@ def _single_validation(params):
         hand_arm_exclude_table_contact = None
 
     sim_env = MuJoCo_TestEnv(
-        hand_with_arm=task_config.adding_arm,
+        hand_with_arm=configs.adding_arm,
         hand_xml_path=hand_xml_path,
         hand_arm_ee_name=hand_arm_ee_name,
         hand_arm_exclude_table_contact=hand_arm_exclude_table_contact,
@@ -86,7 +93,7 @@ def _single_validation(params):
     if succ_flag:
         output_npy_path = input_npy_path.replace(graspdata_dir, configs.succ_dir)
         os.makedirs(os.path.dirname(output_npy_path), exist_ok=True)
-        if task_config.adding_arm:
+        if configs.adding_arm:
             np.save(
                 output_npy_path,
                 {"scene_path": grasp_data["scene_path"], "all_qpos": real_qpos_lst},
@@ -103,9 +110,10 @@ def _single_validation(params):
             tmp_npy_path = input_npy_path.replace(
                 graspdata_dir, configs.new_template_dir
             )
+            original_npy_path = input_npy_path.replace(graspdata_dir, configs.grasp_dir)
             os.makedirs(os.path.dirname(tmp_npy_path), exist_ok=True)
             os.system(
-                f"ln -s {os.path.relpath(input_npy_path, os.path.dirname(tmp_npy_path))} {tmp_npy_path}"
+                f"ln -s {os.path.relpath(original_npy_path, os.path.dirname(tmp_npy_path))} {tmp_npy_path}"
             )
 
     return input_npy_path
@@ -121,7 +129,7 @@ def safe_validation(params):
 
 
 def task_syn_test(configs):
-    graspdata_dir = configs.mogen_dir if configs.task.adding_arm else configs.grasp_dir
+    graspdata_dir = configs.mogen_dir if configs.adding_arm else configs.grasp_dir
     input_path_lst = glob.glob(os.path.join(graspdata_dir, "**/*.npy"), recursive=True)
     if configs.debug_name is not None:
         input_path_lst = [p for p in input_path_lst if configs.debug_name in p]

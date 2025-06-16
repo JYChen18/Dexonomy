@@ -81,7 +81,7 @@ class MuJoCo_BaseEnv:
         # Get ready for simulation
         self.model = self.spec.compile()
         self.data = mujoco.MjData(self.model)
-        self.reset_qpos(self.get_hand_qpos())
+        self.reset_qpos(self.get_hand_qpos(), set_ctrl=False)
 
         # For object
         obj_interest_name = scene_cfg["task"]["obj_name"]
@@ -409,13 +409,20 @@ class MuJoCo_BaseEnv:
                 self.model.geom_margin[i] = obj_margin
         return
 
-    def reset_qpos(self, hand_qpos):
+    def reset_qpos(self, hand_qpos, set_ctrl=True):
         # set key frame
         self.model.key_qvel[0] = 0
         self.model.key_act[0] = 0
         self.model.key_qpos[0] = np.concatenate(
             [hand_qpos, self._obj_init_qpos], axis=0
         )
+        if len(self.data.mocap_pos) > 0:
+            self.model.key_mpos[0] = hand_qpos[:3]
+            self.model.key_mquat[0] = hand_qpos[3:7]
+        if set_ctrl:
+            self.set_ctrl(hand_qpos)
+            self.model.key_ctrl[0] = np.copy(self.data.ctrl)
+
         mujoco.mj_resetDataKeyframe(self.model, self.data, 0)
         mujoco.mj_forward(self.model, self.data)
         return
