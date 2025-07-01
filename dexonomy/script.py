@@ -59,7 +59,7 @@ def run_syn_hand(general_config_str, syn_hand_config_str, test_log_path):
 
 
 def run_mogen(save_dir, grasp_dir, hand_name, gpu_lst, test_log_path):
-    mogen_cmd = f"cd ../BODex && conda run -n bodex python example_grasp/multi_gpu.py \
+    mogen_cmd = f"cd third_party/BODex && conda run -n bodex python example_grasp/multi_gpu.py \
     -t mogen_dexonomy \
     -c {hand_name}/dexonomy.yml \
     -g {' '.join([str(g) for g in gpu_lst])} \
