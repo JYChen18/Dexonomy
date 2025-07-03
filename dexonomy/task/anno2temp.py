@@ -7,7 +7,7 @@ import multiprocessing
 import numpy as np
 
 from dexonomy.util.file_util import load_yaml
-from dexonomy.sim import MuJoCo_RobotFK
+from dexonomy.sim import MuJoCo_VisEnv, HandCfg
 from dexonomy.util.np_rot_util import (
     np_transform_points,
     np_array32,
@@ -24,7 +24,10 @@ def _single_anno2temp(params):
     )
     anno_data = load_yaml(anno_path)
     qpos_lst = np_array32(anno_data["qpos"])
-    kin = MuJoCo_RobotFK(xml_path=configs.hand.xml_path, vis_mesh_mode="collision")
+    kin = MuJoCo_VisEnv(
+        hand_cfg=HandCfg(xml_path=configs.hand.xml_path),
+        vis_mesh_mode="collision",
+    )
     xmat, xpos = kin.forward_kinematics(qpos_lst)
 
     if "contact" not in anno_data or anno_data["contact"] is None:
@@ -50,8 +53,8 @@ def _single_anno2temp(params):
     hand_worldframe_contact = []
     hand_contact_body_names = []
     for body_name, contact_anno in contact_lst:
-        body_mesh = kin.body_mesh_dict[body_name]
-        body_id = kin.body_id_dict[body_name]
+        body_mesh = kin.body_mesh_dict[kin.sim_cfg.hand_prefix + body_name]
+        body_id = kin.body_id_dict[kin.sim_cfg.hand_prefix + body_name]
         body_mat, body_pos = xmat[body_id], xpos[body_id]
         if isinstance(contact_anno, List):  # Annotated directly in handframe
             assert len(contact_anno) == 6
@@ -127,7 +130,7 @@ def _single_anno2temp(params):
     temp_path = anno_path.replace(
         configs.raw_anno_dir, configs.init_template_dir
     ).replace(".yaml", ".npy")
-    np.save(temp_path, temp_data)
+    np.save(temp_path, temp_data)  # type: ignore[reportArgumentType]
 
     return
 

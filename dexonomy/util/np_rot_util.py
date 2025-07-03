@@ -6,7 +6,7 @@ from scipy.spatial.transform import Slerp
 import numpy as np
 
 
-def np_array32(x: np.ndarray) -> np.ndarray:
+def np_array32(x: List | np.ndarray) -> np.ndarray:
     return np.array(x, dtype=np.float32)
 
 
@@ -98,7 +98,12 @@ def np_axis_angle_rotation(axis: str, angle: np.ndarray) -> np.ndarray:
     return np.stack(R_flat, -1).reshape(angle.shape + (3, 3))
 
 
-def np_transform_points(points, rot, trans=0.0, scale=1):
+def np_transform_points(
+    points: List | np.ndarray,
+    rot: np.ndarray,
+    trans: np.ndarray,
+    scale: float = 1,
+):
     if isinstance(points, List):
         points = np_array32(points)
     if len(points.shape) == 1:
@@ -109,7 +114,7 @@ def np_transform_points(points, rot, trans=0.0, scale=1):
 
     assert len(points.shape) == 2 and (points.shape[-1] == 6 or points.shape[-1] == 3)
     assert len(rot.shape) == 2
-    assert isinstance(trans, float) or (len(trans.shape) <= 2 and trans.shape[-1] == 3)
+    assert len(trans.shape) <= 2 and len(trans.shape) >= 1 and trans.shape[-1] == 3
 
     if points.shape[-1] == 6:
         resulted_points = np.concatenate(
@@ -127,7 +132,12 @@ def np_transform_points(points, rot, trans=0.0, scale=1):
     return resulted_points
 
 
-def np_inv_transform_points(points, rot, trans=0.0, scale=1):
+def np_inv_transform_points(
+    points: List | np.ndarray,
+    rot: np.ndarray,
+    trans: np.ndarray,
+    scale: float = 1,
+):
     if isinstance(points, List):
         points = np_array32(points)
     if len(points.shape) == 1:
@@ -138,7 +148,7 @@ def np_inv_transform_points(points, rot, trans=0.0, scale=1):
 
     assert len(points.shape) == 2 and (points.shape[-1] == 6 or points.shape[-1] == 3)
     assert len(rot.shape) == 2
-    assert isinstance(trans, float) or (len(trans.shape) <= 2 and trans.shape[-1] == 3)
+    assert len(trans.shape) <= 2 and len(trans.shape) >= 1 and trans.shape[-1] == 3
 
     if points.shape[-1] == 6:
         resulted_points = np.concatenate(

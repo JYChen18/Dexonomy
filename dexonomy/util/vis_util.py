@@ -1,7 +1,6 @@
 import trimesh
 import numpy as np
 
-from dexonomy.sim.mujoco_util import MuJoCo_RobotFK
 from dexonomy.util.np_rot_util import np_normalize_vector, np_normal_to_rot
 
 
@@ -41,32 +40,3 @@ def get_line_mesh(point_lst):
         )
     line_mesh = trimesh.util.concatenate(line_mesh_lst)
     return line_mesh
-
-
-def scene_cfg2mesh(scene_cfg):
-    tm_lst = []
-    for obj in scene_cfg["scene"].values():
-        if obj["type"] == "rigid_object":
-            tm = trimesh.load(obj["file_path"], force="mesh")
-            tm.vertices *= obj["scale"]
-        elif obj["type"] == "articulated_object":
-            arti_obj = MuJoCo_RobotFK(obj["xml_path"], vis_mesh_mode="visual")
-            xmat, xpos = arti_obj.forward_kinematics(0)
-            tm = arti_obj.get_posed_meshes(xmat, xpos)
-            tm.vertices *= obj["scale"]
-        elif obj["type"] == "plane":
-            plane_thick = 0.01
-            delta_transform = trimesh.transformations.translation_matrix(
-                [0, 0, -plane_thick / 2]
-            )
-            tm = trimesh.creation.box(
-                extents=[2.0, 2.0, plane_thick], transform=delta_transform
-            )
-        else:
-            raise NotImplementedError
-        rotation_matrix = trimesh.transformations.quaternion_matrix(obj["pose"][3:])
-        rotation_matrix[:3, 3] = obj["pose"][:3]
-        tm.apply_transform(rotation_matrix)
-        tm_lst.append(tm)
-    scene_mesh = trimesh.util.concatenate(tm_lst)
-    return scene_mesh

@@ -1,6 +1,7 @@
 import os
 import pdb
 from typing import List, Dict
+from dataclasses import dataclass, field
 import logging
 
 import imageio
@@ -18,64 +19,49 @@ from dexonomy.util.np_rot_util import (
     np_inv_transform_points,
     np_get_delta_pose,
 )
+from dexonomy.sim.basic import HandCfg, SimCfg
 
 
 class MuJoCo_BaseEnv:
-
-    timestep: float
-    obj_freejoint: bool
-    hand_mocap_solimp: List[float]
-    hand_mocap_data: List[float]
-    obj_margin: float
-    hand_margin: float
-    plane_margin: float
-    hand_prefix: str = "hand-"
-    obj_prefix: str = "obj-"
-    plane_num: int = 0
-
     def __init__(
         self,
-        hand_xml_path: str,
-        hand_with_arm: bool,
-        hand_arm_ee_name: str = None,
-        hand_arm_exclude_table_contact: List[str] = None,
-        friction_coef: tuple[float, float] = None,
-        scene_cfg: Dict = None,
+        hand_cfg: HandCfg,
+        scene_cfg: Dict | None = None,
+        sim_cfg: SimCfg = SimCfg(),
         debug_render: bool = False,
         debug_viewer: bool = False,
-        obj_margin: float = None,
     ):
-        if obj_margin is not None:
-            self.obj_margin = obj_margin
-
+        self.sim_cfg = sim_cfg
         self.spec = mujoco.MjSpec()
         self.spec.meshdir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-        self.spec.option.timestep = self.timestep
+        self.spec.option.timestep = self.sim_cfg.timestep
         self.spec.option.integrator = mujoco.mjtIntegrator.mjINT_IMPLICITFAST
         self.spec.option.disableflags = mujoco.mjtDisableBit.mjDSBL_GRAVITY
 
         if debug_render or debug_viewer:
             self._add_for_visualization()
 
-        self._add_hand(hand_xml_path, hand_with_arm, hand_arm_exclude_table_contact)
+        self._add_hand(
+            hand_cfg.xml_path,
+            hand_cfg.freejoint,
+            hand_cfg.arm_flag,
+            hand_cfg.exclude_table_contact,
+        )
 
         self._obj_init_qpos = []
         self._obj_nv = 0
-        for obj_name, obj_cfg in scene_cfg["scene"].items():
-            obj_type = obj_cfg["type"]
-            if obj_type == "plane":
-                self._add_plane(**obj_cfg)
-            elif obj_type == "rigid_object":
-                self._add_rigid_object(obj_name, **obj_cfg)
-            elif obj_type == "articulated_object":
-                self._add_articulated_object(obj_name, **obj_cfg)
-            else:
-                raise NotImplementedError(
-                    f"Unsupported object type: {obj_type}. Available choices: 'rigid_object', 'articulated_object', 'plane'."
-                )
-        self._obj_init_qpos = np_array32(self._obj_init_qpos)
+        if scene_cfg is not None:
+            for obj_name, obj_cfg in scene_cfg["scene"].items():
+                obj_type = obj_cfg["type"]
+                if obj_type in ["plane", "rigid_object", "articulated_object"]:
+                    eval(f"self._add_{obj_type}")(obj_name, **obj_cfg)
+                else:
+                    raise NotImplementedError(
+                        f"Unsupported object type: {obj_type}. Available choices: 'plane', 'rigid_object', 'articulated_object'."
+                    )
+            self._obj_init_qpos = np_array32(self._obj_init_qpos)
 
-        self._set_friction(friction_coef)
+        self._set_friction(self.sim_cfg.friction_coef)
         self.spec.add_key()
 
         # Get ready for simulation
@@ -83,17 +69,18 @@ class MuJoCo_BaseEnv:
         self.data = mujoco.MjData(self.model)
         self.reset_qpos(self.get_hand_qpos(), set_ctrl=False)
 
-        # For object
-        obj_interest_name = scene_cfg["task"]["obj_name"]
-        if scene_cfg["scene"][obj_interest_name]["type"] == "articulated_object":
-            obj_interest_name += scene_cfg["task"]["part_name"]
-        elif scene_cfg["scene"][obj_interest_name]["type"] == "rigid_object":
-            obj_interest_name += "world"
-        else:
-            raise NotImplementedError
-        self._obj_interest_bodyid = self.model.body(
-            self.obj_prefix + obj_interest_name
-        ).id
+        # Post-processing for object
+        if scene_cfg is not None:
+            obj_interest_name = scene_cfg["task"]["obj_name"]
+            if scene_cfg["scene"][obj_interest_name]["type"] == "articulated_object":
+                obj_interest_name += scene_cfg["task"]["part_name"]
+            elif scene_cfg["scene"][obj_interest_name]["type"] == "rigid_object":
+                obj_interest_name += "world"
+            else:
+                raise NotImplementedError
+            self._obj_interest_bodyid = self.model.body(
+                self.sim_cfg.obj_prefix + obj_interest_name
+            ).id
 
         # For general ctrl
         self._hand_qpos2ctrl_mat = np.zeros((self.model.nu, self.model.nv))
@@ -109,8 +96,10 @@ class MuJoCo_BaseEnv:
         ]
 
         # For IK-based ctrl
-        if hand_with_arm and hand_arm_ee_name is not None:
-            self._ik_body_id = self.model.body(self.hand_prefix + hand_arm_ee_name).id
+        if hand_cfg.arm_flag and hand_cfg.ee_name is not None:
+            self._ik_body_id = self.model.body(
+                self.sim_cfg.hand_prefix + hand_cfg.ee_name
+            ).id
             self._ik_jac = np.zeros((6, self.model.nv))
             self._ik_damping = 1e-4 * np.eye(6)
             self._ik_error = np.zeros(6)
@@ -139,7 +128,13 @@ class MuJoCo_BaseEnv:
             self.debug_images = []
         return
 
-    def _add_hand(self, xml_path: str, arm_flag: bool, arm_exclude_table_contact: bool):
+    def _add_hand(
+        self,
+        xml_path: str,
+        freejoint: bool,
+        arm_flag: bool,
+        exclude_table_contact: List[str] | None,
+    ):
         # Read hand xml
         child_spec = mujoco.MjSpec.from_file(xml_path)
         for m in child_spec.meshes:
@@ -151,29 +146,30 @@ class MuJoCo_BaseEnv:
             # The body will be more "rigid" and less "soft"
             g.solimp[:3] = [0.5, 0.99, 0.0001]
             g.solref[:2] = [0.005, 1]
-            g.margin = self.hand_margin
+            g.margin = self.sim_cfg.hand_margin
 
         attach_frame = self.spec.worldbody.add_frame()
         child_world = attach_frame.attach_body(
-            child_spec.worldbody, self.hand_prefix, ""
+            child_spec.worldbody, self.sim_cfg.hand_prefix, ""
         )
         # Add freejoint and mocap of hand root
-        if not arm_flag:
+        if not arm_flag and freejoint:
             child_world.add_freejoint(name="hand_freejoint")
             self.spec.worldbody.add_body(name="mocap_body", mocap=True)
             self.spec.add_equality(
                 type=mujoco.mjtEq.mjEQ_WELD,
                 name1="mocap_body",
-                name2=f"{self.hand_prefix}world",
+                name2=f"{self.sim_cfg.hand_prefix}world",
                 objtype=mujoco.mjtObj.mjOBJ_BODY,
-                solimp=self.hand_mocap_solimp,
-                data=self.hand_mocap_data,
+                solimp=self.sim_cfg.hand_mocap_solimp,
+                data=self.sim_cfg.hand_mocap_data,
             )
         else:
-            if arm_exclude_table_contact is not None:
-                for body_name in arm_exclude_table_contact:
+            if exclude_table_contact is not None:
+                for body_name in exclude_table_contact:
                     self.spec.add_exclude(
-                        bodyname1="world", bodyname2=f"{self.hand_prefix}{body_name}"
+                        bodyname1="world",
+                        bodyname2=f"{self.sim_cfg.hand_prefix}{body_name}",
                     )
         return
 
@@ -185,16 +181,16 @@ class MuJoCo_BaseEnv:
         for g in child_spec.geoms:
             if g.contype != 0:
                 g.density = density
-                g.margin = self.obj_margin
+                g.margin = self.sim_cfg.obj_margin
         for m in child_spec.meshes:
             m.scale *= scale
         attach_frame = self.spec.worldbody.add_frame()
         child_world = attach_frame.attach_body(
-            child_spec.worldbody, self.obj_prefix + name, ""
+            child_spec.worldbody, self.sim_cfg.obj_prefix + name, ""
         )
         child_world.pos = pose[:3]
         child_world.quat = pose[3:]
-        if self.obj_freejoint:
+        if self.sim_cfg.obj_freejoint:
             child_world.add_freejoint(name=f"{name}_freejoint")
             self._obj_init_qpos.extend(pose)
             self._obj_nv += 6
@@ -207,11 +203,11 @@ class MuJoCo_BaseEnv:
         child_spec.meshdir = self.spec.meshdir
         for g in child_spec.geoms:
             if g.contype != 0:
-                g.margin = self.obj_margin
+                g.margin = self.sim_cfg.obj_margin
         for m in child_spec.meshes:
             m.scale *= scale
 
-        if not self.obj_freejoint:
+        if not self.sim_cfg.obj_freejoint:
             for j in child_spec.joints:
                 j.delete()
         for a in child_spec.actuators:
@@ -219,11 +215,11 @@ class MuJoCo_BaseEnv:
 
         attach_frame = self.spec.worldbody.add_frame()
         child_world = attach_frame.attach_body(
-            child_spec.worldbody, self.obj_prefix + name, ""
+            child_spec.worldbody, self.sim_cfg.obj_prefix + name, ""
         )
         child_world.pos = pose[:3]
         child_world.quat = pose[3:]
-        if self.obj_freejoint:
+        if self.sim_cfg.obj_freejoint:
             if not fix_root:
                 child_world.add_freejoint(name=f"{name}_freejoint")
                 self._obj_init_qpos.extend(pose)
@@ -232,16 +228,27 @@ class MuJoCo_BaseEnv:
             self._obj_nv += len(child_spec.joints)
         return
 
-    def _add_plane(self, pose=[0.0, 0, 0, 1, 0, 0, 0], size=[0, 0, 1.0], **kwargs):
-        plane_geom = self.spec.worldbody.add_geom(
-            name=f"plane_collision_{self.plane_num}",
+    def _add_plane(
+        self, name, pose=[0.0, 0, 0, 1, 0, 0, 0], size=[0, 0, 1.0], **kwargs
+    ):
+        self.spec.worldbody.add_geom(
+            name=self.sim_cfg.plane_prefix + name + "_visual",
+            type=mujoco.mjtGeom.mjGEOM_PLANE,
+            pos=pose[:3],
+            quat=pose[3:],
+            conaffinity=0,
+            contype=0,
+            size=size,
+        )
+        self.spec.worldbody.add_geom(
+            name=self.sim_cfg.plane_prefix + name + "_collision",
             type=mujoco.mjtGeom.mjGEOM_PLANE,
             pos=pose[:3],
             quat=pose[3:],
             size=size,
-            margin=self.plane_margin,
+            margin=self.sim_cfg.plane_margin,
         )
-        self.plane_num += 1
+        self.plane_num = 1
         return
 
     def _add_for_visualization(self):
@@ -265,7 +272,7 @@ class MuJoCo_BaseEnv:
     def _set_friction(self, friction_coef: tuple[float, float]):
         raise NotImplementedError
 
-    def _get_qpos_with_ik(self, hand_qpos):
+    def _get_qpos_with_ik(self, hand_qpos) -> np.ndarray:
         # Solve system of equations: J @ dq = error.
         mujoco.mj_jacBody(
             self.model, self.data, self._ik_jac[:3], self._ik_jac[3:], self._ik_body_id
@@ -295,7 +302,7 @@ class MuJoCo_BaseEnv:
         mujoco.mj_integratePos(self.model, new_qpos, dq, 1.0)
         return new_qpos[:-obj_nq]
 
-    def set_ctrl(self, hand_qpos, ctype="ee_pose", skip_mocap=False):
+    def set_ctrl(self, hand_qpos, ctype="ee_pose", skip_mocap=False) -> None:
         if ctype == "joint_angle":
             self.data.ctrl[:] = self._hand_qpos2ctrl_mat @ hand_qpos
         elif ctype == "ee_pose":
@@ -313,7 +320,7 @@ class MuJoCo_BaseEnv:
                 f"Unsupported control type: {ctype}. Available choices: ['ee_pose', 'joint_angle']"
             )
 
-    def get_interest_object_pose(self):
+    def get_interest_object_pose(self) -> np.ndarray:
         return np.concatenate(
             [
                 self.data.xpos[self._obj_interest_bodyid],
@@ -321,7 +328,7 @@ class MuJoCo_BaseEnv:
             ]
         )
 
-    def set_interest_object_extdir(self, extdir):
+    def set_interest_object_extdir(self, extdir) -> None:
         obj_gravity = self.model.body_subtreemass[self._obj_interest_bodyid] * 9.8
         if obj_gravity < 0.001:
             logging.error(
@@ -334,10 +341,10 @@ class MuJoCo_BaseEnv:
             )
         self.data.xfrc_applied[self._obj_interest_bodyid][:3] = extforce
 
-    def get_hand_qpos(self):
+    def get_hand_qpos(self) -> np.ndarray:
         return self.data.qpos[: self.model.nq - len(self._obj_init_qpos)]
 
-    def get_contact_info(self, obj_margin=None):
+    def get_contact_info(self, obj_margin=None) -> tuple[list[dict], list[dict]]:
         if obj_margin is not None:
             self.set_obj_margin(obj_margin, temporal=True)
             mujoco.mj_forward(self.model, self.data)
@@ -361,11 +368,11 @@ class MuJoCo_BaseEnv:
             ) or (body2_id > world_id and body2_id <= hand_id and body1_id > object_id):
                 if body2_id > object_id:
                     contact_normal = contact.frame[0:3]
-                    hand_body_name = body1_name.removeprefix(self.hand_prefix)
+                    hand_body_name = body1_name.removeprefix(self.sim_cfg.hand_prefix)
                     obj_body_name = body2_name
                 else:
                     contact_normal = -contact.frame[0:3]
-                    hand_body_name = body2_name.removeprefix(self.hand_prefix)
+                    hand_body_name = body2_name.removeprefix(self.sim_cfg.hand_prefix)
                     obj_body_name = body1_name
                 ho_contact.append(
                     {
@@ -398,18 +405,18 @@ class MuJoCo_BaseEnv:
 
         # Set margin and gap back
         if obj_margin is not None:
-            self.set_obj_margin(self.obj_margin, temporal=True)
+            self.set_obj_margin(self.sim_cfg.obj_margin, temporal=True)
         return ho_contact, hh_contact
 
-    def set_obj_margin(self, obj_margin, temporal=False):
+    def set_obj_margin(self, obj_margin, temporal=False) -> None:
         if not temporal:
-            self.obj_margin = obj_margin
+            self.sim_cfg.obj_margin = obj_margin
         for i in range(self.model.ngeom):
-            if self.model.geom(i).name.startswith(self.obj_prefix):
+            if self.model.geom(i).name.startswith(self.sim_cfg.obj_prefix):
                 self.model.geom_margin[i] = obj_margin
         return
 
-    def reset_qpos(self, hand_qpos, set_ctrl=True):
+    def reset_qpos(self, hand_qpos, set_ctrl=True) -> None:
         # set key frame
         self.model.key_qvel[0] = 0
         self.model.key_act[0] = 0
@@ -429,7 +436,7 @@ class MuJoCo_BaseEnv:
 
     def control_with_interp(
         self, qpos_lst, ctype_lst, extdir_lst, interp_lst, step_inner=10
-    ):
+    ) -> np.ndarray:
         real_qpos_lst = []
         for i in range(len(qpos_lst) - 1):
             if len(qpos_lst[i]) == len(qpos_lst[i + 1]):
@@ -450,7 +457,7 @@ class MuJoCo_BaseEnv:
             real_qpos_lst.append(self.data.qpos.copy())
         return np.stack(real_qpos_lst, axis=0)
 
-    def simulation_step(self, step_inner):
+    def simulation_step(self, step_inner) -> None:
         mujoco.mj_forward(self.model, self.data)
         for _ in range(step_inner):
             mujoco.mj_step(self.model, self.data)
@@ -465,7 +472,7 @@ class MuJoCo_BaseEnv:
             pdb.set_trace()
         return
 
-    def debug_postprocess(self, save_path=None):
+    def debug_postprocess(self, save_path=None) -> None:
         if self.debug_render is not None:
             assert save_path is not None
             os.makedirs(os.path.dirname(save_path), exist_ok=True)
@@ -476,14 +483,31 @@ class MuJoCo_BaseEnv:
             self.debug_viewer.close()
 
 
+@dataclass
+class MuJoCo_OptCfg(SimCfg):
+    obj_freejoint: bool = False
+    hand_mocap_solimp: List[float] = field(
+        default_factory=lambda: [0.01, 0.095, 1, 0.5, 2]
+    )  # looser constraints
+    hand_mocap_data: List[float] = field(
+        default_factory=lambda: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10]
+    )  # looser constraints
+    obj_margin: float = 0.001
+    hand_margin: float = 0.001
+    plane_margin: float = 0.02
+
+
 class MuJoCo_OptEnv(MuJoCo_BaseEnv):
-    timestep = 0.002
-    obj_freejoint = False
-    hand_mocap_solimp = [0.01, 0.095, 1, 0.5, 2]  # looser constraints
-    hand_mocap_data = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10]  # looser constraints
-    obj_margin = 0.001
-    hand_margin = 0.001
-    plane_margin = 0.02
+    def __init__(
+        self,
+        hand_cfg: HandCfg,
+        scene_cfg: Dict | None = None,
+        sim_cfg: SimCfg = MuJoCo_OptCfg(),
+        debug_render: bool = False,
+        debug_viewer: bool = False,
+    ):
+        super().__init__(hand_cfg, scene_cfg, sim_cfg, debug_render, debug_viewer)
+        return
 
     def _set_friction(self, friction_coef):
         self.spec.option.cone = mujoco.mjtCone.mjCONE_PYRAMIDAL
@@ -491,19 +515,23 @@ class MuJoCo_OptEnv(MuJoCo_BaseEnv):
             g.condim = 1
         return
 
-    def get_hand_worldframe_contact(self, hand_body_name, hand_bodyframe_contact):
+    def get_hand_worldframe_contact(
+        self, hand_body_name, hand_bodyframe_contact
+    ) -> np.ndarray:
         hand_worldframe_contact = []
         for body_name, hf_c in zip(hand_body_name, hand_bodyframe_contact):
-            body_id = self.model.body(self.hand_prefix + body_name).id
+            body_id = self.model.body(self.sim_cfg.hand_prefix + body_name).id
             br = self.data.xmat[body_id].reshape(3, 3)
             bp = self.data.xpos[body_id]
             hand_worldframe_contact.append(np_transform_points(hf_c, br, bp))
         return np_array32(hand_worldframe_contact)
 
-    def get_hand_bodyframe_contact(self, hand_body_name, hand_worldframe_contact):
+    def get_hand_bodyframe_contact(
+        self, hand_body_name, hand_worldframe_contact
+    ) -> np.ndarray:
         hand_bodyframe_contact = []
         for body_name, wf_c in zip(hand_body_name, hand_worldframe_contact):
-            body_id = self.model.body(self.hand_prefix + body_name).id
+            body_id = self.model.body(self.sim_cfg.hand_prefix + body_name).id
             br = self.data.xmat[body_id].reshape(3, 3)
             bp = self.data.xpos[body_id]
             hand_bodyframe_contact.append(np_inv_transform_points(wf_c, br, bp))
@@ -511,12 +539,12 @@ class MuJoCo_OptEnv(MuJoCo_BaseEnv):
 
     def apply_force_on_hand(
         self, hand_body_name, hand_bodyframe_contact, obj_worldframe_contact
-    ):
+    ) -> np.ndarray:
         self.data.qfrc_applied[:] = 0
         self.data.xfrc_applied[:] = 0
         total_loss = []
         for i, body_name in enumerate(hand_body_name):
-            body_id = self.model.body(self.hand_prefix + body_name).id
+            body_id = self.model.body(self.sim_cfg.hand_prefix + body_name).id
             br = self.data.xmat[body_id].reshape(3, 3)
             bp = self.data.xpos[body_id]
             hcp_world = br @ hand_bodyframe_contact[i, :3] + bp
@@ -545,7 +573,7 @@ class MuJoCo_OptEnv(MuJoCo_BaseEnv):
         self.data.qvel[:] = 0
         return np_array32(total_loss)
 
-    def keep_hand_stable(self):
+    def keep_hand_stable(self) -> None:
         self.data.qfrc_applied[:] = 0
         self.data.xfrc_applied[:] = 0
         self.set_ctrl(self.data.qpos, skip_mocap=True)
@@ -554,7 +582,7 @@ class MuJoCo_OptEnv(MuJoCo_BaseEnv):
 
     def get_squeeze_qpos(
         self, grasp_qpos, hand_body_name, hand_worldframe_contact, contact_wrench
-    ):
+    ) -> np.ndarray:
         self.data.qfrc_applied[:] = 0
         for hbn, hcw, hwc in zip(
             hand_body_name, contact_wrench, hand_worldframe_contact
@@ -565,7 +593,7 @@ class MuJoCo_OptEnv(MuJoCo_BaseEnv):
                 hcw[:3],
                 0 * hcw[3:],
                 hwc[:3],
-                self.model.body(self.hand_prefix + hbn).id,
+                self.model.body(self.sim_cfg.hand_prefix + hbn).id,
                 self.data.qfrc_applied,
             )
         delta_qpos = np.copy(self.data.qfrc_applied)
@@ -582,14 +610,28 @@ class MuJoCo_OptEnv(MuJoCo_BaseEnv):
         return squeeze_qpos
 
 
+@dataclass
+class MuJoCo_TestCfg(SimCfg):
+    timestep: float = 0.004
+    hand_mocap_solimp: List[float] = field(
+        default_factory=lambda: [0.9, 0.95, 0.001, 0.5, 2]
+    )
+    hand_mocap_data: List[float] = field(
+        default_factory=lambda: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]
+    )
+
+
 class MuJoCo_TestEnv(MuJoCo_BaseEnv):
-    timestep = 0.004
-    obj_freejoint = True
-    hand_mocap_solimp = [0.9, 0.95, 0.001, 0.5, 2]
-    hand_mocap_data = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]
-    obj_margin = 0.0
-    hand_margin = 0.0
-    plane_margin = 0.0
+    def __init__(
+        self,
+        hand_cfg: HandCfg,
+        scene_cfg: Dict | None = None,
+        sim_cfg: SimCfg = MuJoCo_TestCfg(),
+        debug_render: bool = False,
+        debug_viewer: bool = True,
+    ):
+        super().__init__(hand_cfg, scene_cfg, sim_cfg, debug_render, debug_viewer)
+        return
 
     def _set_friction(self, friction_coef):
         self.spec.option.cone = mujoco.mjtCone.mjCONE_ELLIPTIC
@@ -609,7 +651,7 @@ class MuJoCo_TestEnv(MuJoCo_BaseEnv):
         target_obj_pose,
         trans_thre,
         angle_thre,
-    ):
+    ) -> tuple[bool, None]:
         external_force_direction = np.array(
             [[1.0, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]
         )
@@ -640,7 +682,7 @@ class MuJoCo_TestEnv(MuJoCo_BaseEnv):
         target_obj_pose,
         trans_thre,
         angle_thre,
-    ):
+    ) -> tuple[bool, np.ndarray]:
         self.reset_qpos(qpos_lst[0])
         real_qpos_lst = self.control_with_interp(
             qpos_lst, ctype_lst, extdir_lst, interp_lst
@@ -652,18 +694,22 @@ class MuJoCo_TestEnv(MuJoCo_BaseEnv):
         return succ_flag, real_qpos_lst
 
 
-class MuJoCo_RobotFK:
-    def __init__(self, xml_path, vis_mesh_mode=None):
+class MuJoCo_VisEnv(MuJoCo_BaseEnv):
+    def __init__(
+        self,
+        hand_cfg: HandCfg,
+        scene_cfg: Dict | None = None,
+        sim_cfg: SimCfg = MuJoCo_TestCfg(),
+        vis_mesh_mode: str | None = None,
+        debug_render: bool = False,
+        debug_viewer: bool = False,
+    ):
+        super().__init__(hand_cfg, scene_cfg, sim_cfg, debug_render, debug_viewer)
         assert (
             vis_mesh_mode == "visual"
             or vis_mesh_mode == "collision"
             or vis_mesh_mode is None
         )
-        spec = mujoco.MjSpec.from_file(xml_path)
-        self.model = spec.compile()
-        self.data = mujoco.MjData(self.model)
-
-        mujoco.mj_forward(self.model, self.data)
 
         self.body_mesh_dict = {}
         self.body_id_dict = {}
@@ -692,6 +738,8 @@ class MuJoCo_RobotFK:
                     tm = trimesh.creation.capsule(
                         radius=geom.size[0], height=2 * geom.size[1]
                     )
+                elif geom.type == 0:
+                    tm = trimesh.creation.box(extents=[2*geom.size[-1], 2*geom.size[-1], 0.001])
                 else:
                     raise NotImplementedError(
                         f"Unsupported mujoco primitive type: {geom.type}. Available choices: 2(icosphere), 3(capsule), 5(cylinder), 6(box)."
@@ -726,29 +774,27 @@ class MuJoCo_RobotFK:
             self.body_mesh_dict[body_name] = trimesh.util.concatenate(body_mesh)
         return
 
-    def forward_kinematics(self, qpos, pose=None):
-        """
-        pose: [7]. Robot root pose.
-        qpos: [n]. n joint angles.
-        """
+    def _set_friction(self, friction_coef):
+        self.spec.option.cone = mujoco.mjtCone.mjCONE_PYRAMIDAL
+        for g in self.spec.geoms:
+            g.condim = 1
+        return
+
+    def forward_kinematics(self, qpos) -> tuple[np.ndarray, np.ndarray]:
         self.data.qpos = qpos
         mujoco.mj_kinematics(self.model, self.data)
         xmat = np_array32(self.data.xmat).reshape(-1, 3, 3)
         xpos = np_array32(self.data.xpos)
-        if pose is not None:
-            root_r, root_t = tq.quat2mat(pose[3:]).astype(np.float32), np_array32(
-                pose[:3]
-            )
-            xmat = root_r[None] @ xmat
-            xpos = xpos @ root_r.T + root_t[None]
         return xmat, xpos
 
-    def get_init_body_meshes(self):
-        return self.body_mesh_dict.keys(), self.body_mesh_dict.values()
+    def get_init_body_meshes(self) -> tuple[list[str], list[trimesh.Trimesh]]:
+        return list(self.body_mesh_dict.keys()), list(self.body_mesh_dict.values())
 
-    def get_posed_meshes(self, xmat, xpos):
+    def get_posed_meshes(self, xmat, xpos, vis_prefix=[""]) -> trimesh.Trimesh:
         full_tm = []
         for k, v in self.body_mesh_dict.items():
+            if not any(k.startswith(p) for p in vis_prefix):
+                continue
             body_rot = xmat[self.body_id_dict[k]].reshape(3, 3)
             body_trans = xpos[self.body_id_dict[k]]
             posed_vert = v.vertices @ body_rot.T + body_trans
@@ -762,8 +808,10 @@ if __name__ == "__main__":
     xml_path = os.path.join(
         os.path.dirname(__file__), "../../assets/hand/shadow/right.xml"
     )
-    kinematic = MuJoCo_RobotFK(xml_path)
+    kinematic = MuJoCo_VisEnv(
+        hand_cfg=HandCfg(xml_path=xml_path), vis_mesh_mode="visual"
+    )
     hand_qpos = np.zeros((22))
-    kinematic.forward_kinematics(hand_qpos)
-    visual_mesh = kinematic.get_posed_meshes()
+    xmat, xpos = kinematic.forward_kinematics(hand_qpos)
+    visual_mesh = kinematic.get_posed_meshes(xmat, xpos)
     visual_mesh.export(f"debug_hand.obj")

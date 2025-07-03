@@ -6,7 +6,7 @@ import glob
 import numpy as np
 
 from dexonomy.qp.qp_single import ContactQP
-from dexonomy.sim import MuJoCo_OptEnv
+from dexonomy.sim import MuJoCo_OptEnv, MuJoCo_OptCfg, HandCfg
 from dexonomy.util.np_rot_util import np_array32
 from dexonomy.util.file_util import load_scene_cfg
 
@@ -72,13 +72,13 @@ def _single_hand_refine(params):
     grasp_data = np.load(input_npy_path, allow_pickle=True).item()
 
     sim_env = MuJoCo_OptEnv(
-        hand_xml_path=configs.hand.xml_path,
-        hand_with_arm=False,
-        friction_coef=None,
+        hand_cfg=HandCfg(xml_path=configs.hand.xml_path, freejoint=True),
         scene_cfg=load_scene_cfg(grasp_data["scene_path"]),
+        sim_cfg=MuJoCo_OptCfg(
+            obj_margin=task_config.pregrasp.ho_target_dist,
+        ),
         debug_render=configs.debug_render,
         debug_viewer=configs.debug_viewer,
-        obj_margin=task_config.pregrasp.ho_target_dist,
     )
 
     sim_env.reset_qpos(grasp_data["grasp_qpos"][0])

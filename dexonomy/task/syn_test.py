@@ -5,7 +5,7 @@ import numpy as np
 import glob
 import traceback
 
-from dexonomy.sim import MuJoCo_TestEnv
+from dexonomy.sim import MuJoCo_TestEnv, HandCfg, MuJoCo_TestCfg
 from dexonomy.util.file_util import load_scene_cfg, load_json
 from dexonomy.util.traj_util import get_full_traj
 
@@ -36,22 +36,16 @@ def _single_validation(params):
             f"Using an arm but no table is in scene cfg: {grasp_data['scene_path']}"
         )
 
-    if configs.adding_arm:
-        hand_xml_path = hand_config.hand_on_arm.xml_path
-        hand_arm_ee_name = hand_config.hand_on_arm.ee_name
-        hand_arm_exclude_table_contact = hand_config.hand_on_arm.exclude_table_contact
-    else:
-        hand_xml_path = hand_config.xml_path
-        hand_arm_ee_name = None
-        hand_arm_exclude_table_contact = None
-
     sim_env = MuJoCo_TestEnv(
-        hand_with_arm=configs.adding_arm,
-        hand_xml_path=hand_xml_path,
-        hand_arm_ee_name=hand_arm_ee_name,
-        hand_arm_exclude_table_contact=hand_arm_exclude_table_contact,
-        friction_coef=task_config.miu_coef,
+        hand_cfg=(
+            HandCfg(arm_flag=True, **hand_config.hand_on_arm)
+            if configs.adding_arm
+            else HandCfg(xml_path=hand_config.xml_path, freejoint=True)
+        ),
         scene_cfg=scene_cfg,
+        sim_cfg=MuJoCo_TestCfg(
+            friction_coef=task_config.miu_coef,
+        ),
         debug_render=configs.debug_render,
         debug_viewer=configs.debug_viewer,
     )
@@ -96,7 +90,7 @@ def _single_validation(params):
         if configs.adding_arm:
             np.save(
                 output_npy_path,
-                {"scene_path": grasp_data["scene_path"], "all_qpos": real_qpos_lst},
+                {"scene_path": grasp_data["scene_path"], "all_qpos": real_qpos_lst},  # type: ignore[reportArgumentType]
             )
         else:
             os.system(

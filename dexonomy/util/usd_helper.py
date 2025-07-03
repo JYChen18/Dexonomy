@@ -65,20 +65,14 @@ def set_geom_mesh_attrs(mesh_geom: UsdGeom.Mesh, obs: trimesh.Trimesh):
 
 
 class UsdHelper:
-    def __init__(self, use_float=True) -> None:
-        self.stage = None
-        self.dt = None
-        self._use_float = use_float
-        self._xform_cache = UsdGeom.XformCache()
-
-    def create_stage(
+    def __init__(
         self,
         name: str = "curobo_stage.usd",
         base_frame: str = "/world",
         timesteps: Optional[int] = None,
-        dt=0.02,
+        dt: float = 0.02,
         interpolation_steps: float = 1,
-    ):
+    ) -> None:
         self.stage = Usd.Stage.CreateNew(name)
         UsdGeom.SetStageUpAxis(self.stage, "Z")
         UsdGeom.SetStageMetersPerUnit(self.stage, 1)
@@ -118,38 +112,33 @@ class UsdHelper:
         mesh_lst: List[trimesh.Trimesh],
         name_lst: List[str],
         pose_lst: List[List],
-        visible_time: List[List[float]] = None,
+        vis_time_lst: List[tuple[float, float]],
         base_frame: str = "/world",
         obstacles_frame: str = "obstacles",
-        material: Material = None,
+        material: Material | None = None,
     ):
         self.add_subroot(base_frame, obstacles_frame)
         full_path = os.path.join(base_frame, obstacles_frame)
 
-        if visible_time is not None:
-            prim_path = [
-                self.add_mesh_to_stage(
-                    m, name, full_path, visible_time=vt, material=material
-                )
-                for vt, name, m in zip(visible_time, name_lst, mesh_lst)
-            ]
-        else:
-            prim_path = [
-                self.add_mesh_to_stage(m, name, full_path, material=material)
-                for name, m in zip(name_lst, mesh_lst)
-            ]
+        prim_path = [
+            self.add_mesh_to_stage(
+                m, name, full_path, visible_time=vt, material=material
+            )
+            for vt, name, m in zip(vis_time_lst, name_lst, mesh_lst)
+        ]
 
         for i, i_val in enumerate(prim_path):
             curr_prim = self.stage.GetPrimAtPath(i_val)
             form = UsdGeom.Xformable(curr_prim).GetOrderedXformOps()
 
             for t, p in enumerate(pose_lst):
-                position = Gf.Vec3f(p[i, 0], p[i, 1], p[i, 2])
-                quat = Gf.Quatf(p[i, 3], *p[i, 4:-1])
-                scale = Gf.Vec3f(p[i, -1], p[i, -1], p[i, -1])
-                form[0].Set(time=t * self.interpolation_steps, value=position)
-                form[1].Set(time=t * self.interpolation_steps, value=quat)
-                form[2].Set(time=t * self.interpolation_steps, value=scale)
+                position = Gf.Vec3f(p[i][0], p[i][1], p[i][2])
+                quat = Gf.Quatf(p[i][3], *p[i][4:-1])
+                scale = Gf.Vec3f(p[i][-1], p[i][-1], p[i][-1])
+                real_t = (t + vis_time_lst[i][0]) * self.interpolation_steps
+                form[0].Set(time=real_t, value=position)
+                form[1].Set(time=real_t, value=quat)
+                form[2].Set(time=real_t, value=scale)
         return
 
     def add_mesh_to_stage(
@@ -157,8 +146,8 @@ class UsdHelper:
         mesh: trimesh.Trimesh,
         mesh_name: str,
         base_frame: str = "/world/obstacles",
-        visible_time=None,
-        material: Material = None,
+        visible_time: tuple[float, float] | None = None,
+        material: Material | None = None,
     ):
         root_path = os.path.join(
             base_frame,
@@ -166,21 +155,21 @@ class UsdHelper:
             + mesh_name.replace(".", "_")
             .replace("é", "e")
             .replace("+", "_")
-            .replace(":", "_"),
+            .replace(":", "_")
+            .replace("-", "_"),
         )
-        obj_geom = UsdGeom.Mesh.Define(self.stage, root_path)
-        obj_prim = self.stage.GetPrimAtPath(root_path)
-        set_geom_mesh_attrs(obj_geom, mesh)
-
-        obj_prim.CreateAttribute(
-            "physics:rigidBodyEnabled", Sdf.ValueTypeNames.Bool, custom=False
-        )
-        if visible_time is not None:
+        obj_geom = UsdGeom.Mesh.Get(self.stage, root_path)
+        if not obj_geom:
+            obj_geom = UsdGeom.Mesh.Define(self.stage, root_path)
+            set_geom_mesh_attrs(obj_geom, mesh)
             obj_geom.GetVisibilityAttr().Set("invisible", Usd.TimeCode(0))
+
+        if visible_time is not None:
             obj_geom.GetVisibilityAttr().Set("inherited", Usd.TimeCode(visible_time[0]))
             obj_geom.GetVisibilityAttr().Set("invisible", Usd.TimeCode(visible_time[1]))
 
         if material is not None:
+            obj_prim = self.stage.GetPrimAtPath(root_path)
             self.add_material(
                 "material_" + material.name,
                 root_path,

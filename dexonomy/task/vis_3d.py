@@ -5,17 +5,16 @@ from glob import glob
 import logging
 import multiprocessing
 
-from dexonomy.sim import MuJoCo_RobotFK
-from dexonomy.util.vis_util import get_arrow_mesh, get_line_mesh, scene_cfg2mesh
+from dexonomy.sim import MuJoCo_VisEnv, HandCfg, MuJoCo_OptCfg
+from dexonomy.util.vis_util import get_arrow_mesh, get_line_mesh
 from dexonomy.util.file_util import load_yaml, load_scene_cfg
 
 
 def _single_visd(params):
-    data_path, data_folder, kin, configs = (
+    data_path, data_folder, configs = (
         params[0],
         params[1],
         params[2],
-        params[3],
     )
     task_config = configs.task
 
@@ -27,24 +26,32 @@ def _single_visd(params):
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
 
     grasp_data = np.load(data_path, allow_pickle=True).item()
+    kin = MuJoCo_VisEnv(
+        hand_cfg=HandCfg(xml_path=configs.hand.xml_path, freejoint=True),
+        scene_cfg=(
+            load_scene_cfg(grasp_data["scene_path"])
+            if task_config.data_type != "init_template"
+            else None
+        ),
+        sim_cfg=MuJoCo_OptCfg(),
+        vis_mesh_mode=task_config.hand.mode,
+    )
+
+    xmat, xpos = kin.forward_kinematics(grasp_data["grasp_qpos"][0])
+    hand_mesh = kin.get_posed_meshes(xmat, xpos, vis_prefix=[kin.sim_cfg.hand_prefix])
 
     # Object
     if task_config.data_type != "init_template":
-        scene_cfg = load_scene_cfg(grasp_data["scene_path"])
-        obj_tm = scene_cfg2mesh(scene_cfg)
+        obj_tm = kin.get_posed_meshes(
+            xmat, xpos, vis_prefix=[kin.sim_cfg.obj_prefix, kin.sim_cfg.plane_prefix]
+        )
         if task_config.object.contact:
             point_mesh, arrow_mesh = get_arrow_mesh(
                 grasp_data["obj_worldframe_contacts"][:, :3],
                 grasp_data["obj_worldframe_contacts"][:, 3:],
             )
-            obj_tm = trimesh.util.concatenate([obj_tm, point_mesh, arrow_mesh])
+            obj_tm = trimesh.util.concatenate([point_mesh, arrow_mesh])
         obj_tm.export(out_path.replace(".npy", "_obj.obj"))
-
-    # Hand
-    xmat, xpos = kin.forward_kinematics(
-        qpos=grasp_data["grasp_qpos"][0, 7:], pose=grasp_data["grasp_qpos"][0, :7]
-    )
-    hand_mesh = kin.get_posed_meshes(xmat, xpos)
 
     if task_config.hand.contact:
         point_mesh, arrow_mesh = get_arrow_mesh(
@@ -123,7 +130,10 @@ def task_vis_3d(configs):
         f"Find {len(input_path_lst)} in {data_folder}. Debug name: {configs.debug_name}. Check success: {task_config.check_success}"
     )
 
-    kin = MuJoCo_RobotFK(configs.hand.xml_path, vis_mesh_mode=task_config.hand.mode)
+    kin = MuJoCo_VisEnv(
+        hand_cfg=HandCfg(xml_path=configs.hand.xml_path, freejoint=True),
+        vis_mesh_mode=task_config.hand.mode,
+    )
     if task_config.hand.init_body:
         save_folder = os.path.join(configs.vis_3d_dir, "hand_init_body_mesh")
         os.makedirs(save_folder, exist_ok=True)
@@ -132,7 +142,7 @@ def task_vis_3d(configs):
             init_mesh.export(os.path.join(save_folder, f"{init_name}.obj"))
         logging.info(f"save hand initial body meshes to {os.path.abspath(save_folder)}")
 
-    iterable_params = [(inp, data_folder, kin, configs) for inp in input_path_lst]
+    iterable_params = [(inp, data_folder, configs) for inp in input_path_lst]
 
     with multiprocessing.Pool(processes=configs.n_worker) as pool:
         result_iter = pool.imap_unordered(_single_visd, iterable_params)

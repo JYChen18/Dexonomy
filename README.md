@@ -24,13 +24,12 @@ All starting from just **one** human-annotated template *per hand and grasp type
 - Object Scenes: Single (floating & tabletop), Clustered (light clutter)
 - Object Assets: Rigid objects (ShapeNet & Objaverse), Articulated objects (PartNet)
 - Physics Simulator: MuJoCo
-
-#### Planned Features
-- Motion Synthesis: cuRobo integration, Simulation testing
+- Grasping Trajectory Synthesis: cuRobo integration
 
 
 ## Installation
 Our code is tested on **Ubuntu 20.04** with **NVIDIA GeForce RTX 3090** GPUs and **Intel(R) Xeon(R) Platinum 8255C** CPUs.
+
 ```bash
 git submodule update --init --recursive --progress
 
@@ -38,6 +37,11 @@ conda create -n dexonomy python=3.10
 conda activate dexonomy
 
 conda install pytorch==2.5.0 pytorch-cuda=12.1 -c pytorch -c nvidia 
+
+# [Optional] Only necessary for grasping trajectory synthesis
+pip install -e ./third_party/BODex --no-build-isolation
+
+# Install this package
 pip install -e .
 ```
 

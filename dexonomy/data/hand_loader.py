@@ -18,7 +18,7 @@ from dexonomy.util.np_rot_util import (
     np_transform_points,
     np_inv_transform_points,
 )
-from dexonomy.sim import MuJoCo_RobotFK
+from dexonomy.sim import MuJoCo_VisEnv, HandCfg
 from dexonomy.util.file_util import load_yaml
 
 
@@ -71,12 +71,14 @@ class HandTemplateLibrary:
 
         # Read and pre-process skeleton informations
         hand_skeleton_dict = load_yaml(skeleton_path)
-        kinematic = MuJoCo_RobotFK(xml_path=xml_path, vis_mesh_mode=None)
+        kinematic = MuJoCo_VisEnv(hand_cfg=HandCfg(xml_path=xml_path))
         self.hand_skeleton = []
         self.hand_sk_body_id = []
         for k, v in hand_skeleton_dict.items():
             self.hand_skeleton.extend(v)
-            self.hand_sk_body_id.extend([kinematic.body_id_dict[k]] * len(v))
+            self.hand_sk_body_id.extend(
+                [kinematic.body_id_dict[kinematic.sim_cfg.hand_prefix + k]] * len(v)
+            )
         self.hand_skeleton = np_array32(self.hand_skeleton)
         self.hand_sk_body_id = np.array(self.hand_sk_body_id)
 
@@ -164,7 +166,7 @@ class HandTemplateLibrary:
 
     def _update_data_buffer(self):
         """Consumer thread that load data and stores results in buffer"""
-        kinematic = MuJoCo_RobotFK(self.xml_path, vis_mesh_mode=None)
+        kinematic = MuJoCo_VisEnv(hand_cfg=HandCfg(xml_path=self.xml_path))
         while self.running:
             data_path = None
 
@@ -197,14 +199,14 @@ class HandTemplateLibrary:
                     error_traceback = traceback.format_exc()
                     logging.error(f"(Hand Loader) {error_traceback}")
 
-    def _load_data(self, kinematic: MuJoCo_RobotFK, data_path: str):
+    def _load_data(self, kinematic: MuJoCo_VisEnv, data_path: str):
         hand_data = np.load(data_path, allow_pickle=True).item()
         hand_data["grasp_qpos"] = hand_data["grasp_qpos"].squeeze()
         xmat, xpos = kinematic.forward_kinematics(hand_data["grasp_qpos"][7:])
         body_xmat = xmat[self.hand_sk_body_id]
         body_xpos = xpos[self.hand_sk_body_id]
         hand_data["hf_hsk"] = (
-            self.hand_skeleton.reshape(-1, 2, 3) @ body_xmat.transpose(0, 2, 1)
+            np.reshape(self.hand_skeleton, (-1, 2, 3)) @ body_xmat.transpose(0, 2, 1)
             + body_xpos[:, None, :]
         ).reshape(-1, 6)
 
@@ -250,7 +252,9 @@ def test_hand_library(configs):
         for _ in range(20):
             for i in range(3):
                 time.sleep(0.1)
-                d = hand_library.get_batched_data((10, 8192), "cpu")
+                d = hand_library.get_batched_data(
+                    torch.Size([10, 8192]), torch.device("cpu")
+                )
                 logging.info(f"Batched data shape: {d['grasp_qpos'].shape}")
             time.sleep(0.8)
     finally:

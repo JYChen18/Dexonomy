@@ -8,6 +8,7 @@ description = "Dexonomy: Synthesizing All Dexterous Grasp Types in a Grasp Taxon
 version = "0.1"
 authors = [{name = "Jiayi Chen", email = "jiayichen@pku.edu.cn"}]
 dependencies = [
+    "torch>=2.0.1",
     "numpy==1.26.4",
     "warp-lang==1.6.2",
     "mujoco==3.3.2",
@@ -20,9 +21,6 @@ dependencies = [
     "usd-core==25.2",
     "ruamel.yaml==0.18.10",
 ]
-
-[project.optional-dependencies]
-cuda = ["pytorch>=2.0.1"]
 
 [tool.setuptools]
 packages = ["dexonomy"]
