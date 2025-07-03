@@ -358,7 +358,7 @@ class ObjectAligner:
         return out_valid_idx
 
 
-def task_syn_obj(configs):
+def task_init(configs):
     task_config = configs.task
     assert os.path.exists(
         os.path.join(configs.init_template_dir, configs.template_name + ".npy")
@@ -498,7 +498,7 @@ def task_syn_obj(configs):
                             "scene_path": scene_path,
                         },
                     )
-        logging.info("Finish task syn_obj.")
+        logging.info("Finish task init.")
     except BaseException as e:
         hand_library.stop()
         error_traceback = traceback.format_exc()

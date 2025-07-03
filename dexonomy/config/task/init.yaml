@@ -5,7 +5,7 @@ object:
   batch_size: 10
   init_point_num: 1024
   init_inplane_num: 8
-  cfg_path: ${asset_root}/object/DGN_5k/scene_cfg/**/floating/**.npy
+  cfg_path: ${asset_root}/object/DGN_2k/scene_cfg/**/tabletop_ur10e/**.npy
   cfg_num: 100
   mass: ${obj_mass}
 

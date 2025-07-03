@@ -66,7 +66,7 @@ Alternatively, you can pre-process your own object assets using [MeshProcess](ht
 ### 2. Synthesize Grasps
 Run the following commands to synthesize grasps for a specific grasp type:
 ```bash
-python -m dexonomy.main task=anno2temp   # Generate initial template from human annotations
+python -m dexonomy.main task=templ   # Generate initial template from human annotations
 python -m dexonomy.script 'template_name=[1_Large_Diameter]'
 ```
 

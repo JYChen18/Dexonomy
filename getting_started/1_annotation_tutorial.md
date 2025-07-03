@@ -66,8 +66,8 @@ qpos: [-0.017, 0.47, 0.74, 0.74, -0.02, 0.49, 0.74, 0.74, 0.03, 0.47, 0.74, 0.74
 ```
 4. To generate the 3D mesh and visualize it:
 ```bash
-python -m dexonomy.main hand=new_hand task=anno2temp
-python -m dexonomy.main hand=new_hand task=vis_3d task.data_type=init_template
+python -m dexonomy.main hand=new_hand task=templ
+python -m dexonomy.main hand=new_hand task=v3d task.data_type=init_template
 ```
 
 ### Annotate contact points and normals in [CloudCompare](https://www.danielgm.net/cc/)
@@ -93,7 +93,7 @@ contact:
 
 1. Export all hand body meshes:
 ```bash
-python -m dexonomy.main hand=new_hand task=vis_3d task.data_type=init_template task.hand.init_body=True
+python -m dexonomy.main hand=new_hand task=v3d task.data_type=init_template task.hand.init_body=True
 ```
 2. Load one mesh into CloudCompare and annotate keypoints as in *Option A*.
 3. Copy them into `anno_keypoint.yaml` like:
@@ -111,8 +111,8 @@ contact:
 
 To visualize the annotated contacts:
 ```bash
-python -m dexonomy.main hand=new_hand task=anno2temp
-python -m dexonomy.main hand=new_hand task=vis_3d task.data_type=init_template task.hand.contact=True
+python -m dexonomy.main hand=new_hand task=templ
+python -m dexonomy.main hand=new_hand task=v3d task.data_type=init_template task.hand.contact=True
 ```
 `anno2temp` will also automatically check for mismatches between annotated contact points and body names — a common issue in practice.
 
@@ -142,5 +142,5 @@ rh_palm: [
 
 To visualize the annotated hand skeleton:
 ```bash
-python -m dexonomy.main hand=new_hand task=vis_3d task.data_type=init_template task.hand.skeleton=True
+python -m dexonomy.main hand=new_hand task=v3d task.data_type=init_template task.hand.skeleton=True
 ```

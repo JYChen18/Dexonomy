@@ -1,9 +1,0 @@
-max_num: 100
-data_type: succ # init or grasp or succ or new_template
-check_success:    # True or False or None
-qpos_type: ["grasp"] #, "pregrasp", "squeeze"]
-
-hand:
-  mode: visual  # visual or collision
-
-cust_log_dir: ${log_dir}

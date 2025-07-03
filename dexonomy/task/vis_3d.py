@@ -86,7 +86,7 @@ def _single_visd(params):
     return
 
 
-def task_vis_3d(configs):
+def task_v3d(configs):
     task_config = configs.task
     if task_config.data_type == "init_template":
         data_folder = configs.init_template_dir
@@ -94,17 +94,21 @@ def task_vis_3d(configs):
         if configs.debug_name is not None:
             input_path_lst = [p for p in input_path_lst if configs.debug_name in p]
     else:
-        if task_config.data_type == "grasp":
-            data_folder, check_folder = configs.grasp_dir, configs.succ_dir
-        elif task_config.data_type == "init":
+        if task_config.data_type == "init":
             data_folder, check_folder = configs.init_dir, configs.grasp_dir
-        elif task_config.data_type == "succ":
-            data_folder, check_folder = configs.succ_dir, None
+        elif task_config.data_type == "grasp":
+            data_folder, check_folder = configs.grasp_dir, configs.succ_grasp_dir
+            if not os.path.exists(check_folder):
+                check_folder = configs.succ_traj_dir
+        elif task_config.data_type == "succ_grasp":
+            data_folder, check_folder = configs.succ_grasp_dir, None
+        elif task_config.data_type == "succ_traj":
+            data_folder, check_folder = configs.succ_traj_dir, None
         elif task_config.data_type == "new_template":
             data_folder, check_folder = configs.new_template_dir, None
         else:
             raise NotImplementedError(
-                f"Valid choices: 'grasp', 'init', 'succ', 'init_template', 'new_template'. Current: '{task_config.data_type}' "
+                f"Valid choices: 'init', 'grasp', 'succ_grasp', 'succ_traj', 'init_template', 'new_template'. Current: '{task_config.data_type}' "
             )
         input_path_lst = glob(os.path.join(data_folder, "**/*.npy"), recursive=True)
         if configs.debug_name is not None:

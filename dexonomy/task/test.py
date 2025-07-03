@@ -12,7 +12,7 @@ from dexonomy.util.traj_util import get_full_traj
 
 def _single_validation(params):
     input_npy_path, configs = params[0], params[1]
-    graspdata_dir = configs.mogen_dir if configs.adding_arm else configs.grasp_dir
+    data_dir = configs.traj_dir if configs.adding_arm else configs.grasp_dir
     task_config = configs.task
     hand_config = configs.hand
 
@@ -79,20 +79,22 @@ def _single_validation(params):
     )
 
     sim_env.debug_postprocess(
-        save_path=input_npy_path.replace(graspdata_dir, configs.debug_dir).replace(
+        save_path=input_npy_path.replace(data_dir, configs.debug_dir).replace(
             ".npy", ".gif"
         )
     )
 
     if succ_flag:
-        output_npy_path = input_npy_path.replace(graspdata_dir, configs.succ_dir)
-        os.makedirs(os.path.dirname(output_npy_path), exist_ok=True)
         if configs.adding_arm:
+            output_npy_path = input_npy_path.replace(data_dir, configs.succ_traj_dir)
+            os.makedirs(os.path.dirname(output_npy_path), exist_ok=True)
             np.save(
                 output_npy_path,
-                {"scene_path": grasp_data["scene_path"], "all_qpos": real_qpos_lst},
+                {"scene_path": grasp_data["scene_path"], "traj_qpos": real_qpos_lst},
             )
         else:
+            output_npy_path = input_npy_path.replace(data_dir, configs.succ_grasp_dir)
+            os.makedirs(os.path.dirname(output_npy_path), exist_ok=True)
             os.system(
                 f"ln -s {os.path.relpath(input_npy_path, os.path.dirname(output_npy_path))} {output_npy_path}"
             )
@@ -101,14 +103,13 @@ def _single_validation(params):
             configs.update_template is not False
             and grasp_data["evolution_num"] <= configs.max_template_evolution
         ):
-            tmp_npy_path = input_npy_path.replace(
-                graspdata_dir, configs.new_template_dir
-            )
-            original_npy_path = input_npy_path.replace(graspdata_dir, configs.grasp_dir)
-            os.makedirs(os.path.dirname(tmp_npy_path), exist_ok=True)
-            os.system(
-                f"ln -s {os.path.relpath(original_npy_path, os.path.dirname(tmp_npy_path))} {tmp_npy_path}"
-            )
+            tmp_npy_path = input_npy_path.replace(data_dir, configs.new_template_dir)
+            if not os.path.exists(tmp_npy_path):
+                original_npy_path = input_npy_path.replace(data_dir, configs.grasp_dir)
+                os.makedirs(os.path.dirname(tmp_npy_path), exist_ok=True)
+                os.system(
+                    f"ln -s {os.path.relpath(original_npy_path, os.path.dirname(tmp_npy_path))} {tmp_npy_path}"
+                )
 
     return input_npy_path
 
@@ -122,9 +123,9 @@ def safe_validation(params):
         return params[0]
 
 
-def task_syn_test(configs):
-    graspdata_dir = configs.mogen_dir if configs.adding_arm else configs.grasp_dir
-    input_path_lst = glob.glob(os.path.join(graspdata_dir, "**/*.npy"), recursive=True)
+def task_test(configs):
+    data_dir = configs.traj_dir if configs.adding_arm else configs.grasp_dir
+    input_path_lst = glob.glob(os.path.join(data_dir, "**/*.npy"), recursive=True)
     if configs.debug_name is not None:
         input_path_lst = [p for p in input_path_lst if configs.debug_name in p]
 
@@ -136,7 +137,7 @@ def task_syn_test(configs):
         logged_paths = [p.split("\n")[0] for p in logged_paths]
         input_path_lst = list(set(input_path_lst).difference(set(logged_paths)))
 
-    logging.info(f"Find {len(input_path_lst)} graspdata")
+    logging.info(f"Find {len(input_path_lst)} grasp data")
 
     if len(input_path_lst) == 0:
         return

@@ -135,7 +135,7 @@ def _single_anno2temp(params):
     return
 
 
-def task_anno2temp(configs):
+def task_templ(configs):
 
     input_path_lst = glob(os.path.join(configs.raw_anno_dir, "**.yaml"))
     if configs.debug_name is not None:

@@ -101,24 +101,41 @@ def task_stat(configs):
         all_grasp_lst = glob(
             os.path.join(configs.grasp_dir, template_name, "**/*.npy"), recursive=True
         )
-        all_eval_lst = glob(
-            os.path.join(configs.succ_dir, template_name, "**/*.npy"), recursive=True
+        all_succ_grasp_lst = glob(
+            os.path.join(configs.succ_grasp_dir, template_name, "**/*.npy"),
+            recursive=True,
+        )
+        all_traj_lst = glob(
+            os.path.join(configs.traj_dir, template_name, "**/*.npy"), recursive=True
+        )
+        all_succ_traj_lst = glob(
+            os.path.join(configs.succ_traj_dir, template_name, "**/*.npy"),
+            recursive=True,
         )
 
-        if len(all_eval_lst) + len(all_init_lst) + len(all_grasp_lst) == 0:
+        if (
+            len(all_succ_grasp_lst)
+            + len(all_succ_traj_lst)
+            + len(all_traj_lst)
+            + len(all_init_lst)
+            + len(all_grasp_lst)
+            == 0
+        ):
             continue
 
         init_obj_lst = get_obj_name_lst(all_init_lst, template_name)
         grasp_obj_lst = get_obj_name_lst(all_grasp_lst, template_name)
-        succ_obj_lst = get_obj_name_lst(all_eval_lst, template_name)
+        succ_grasp_obj_lst = get_obj_name_lst(all_succ_grasp_lst, template_name)
+        traj_obj_lst = get_obj_name_lst(all_traj_lst, template_name)
+        succ_traj_obj_lst = get_obj_name_lst(all_succ_traj_lst, template_name)
 
-        if len(all_eval_lst) != 0 and (
+        if len(all_succ_grasp_lst) != 0 and (
             configs.task.scale_fig
             or configs.task.diversity
             or configs.task.contact_number
         ):
             with multiprocessing.Pool(processes=configs.n_worker) as pool:
-                result_iter = pool.imap_unordered(read_data, all_eval_lst)
+                result_iter = pool.imap_unordered(read_data, all_succ_grasp_lst)
                 data_lst = list(result_iter)
 
             if configs.task.scale_fig:
@@ -135,20 +152,24 @@ def task_stat(configs):
                     [d["contact_number"] for d in data_lst]
                 )
 
-        header = "{:<20} | {:<10} | {:<10} | {:<10}".format(
-            template_name, "SynObj", "SynHand", "Test"
+        header = "{:<20} | {:<10} | {:<10} | {:<10} | {:<10} | {:<10}".format(
+            template_name, "Init", "SynGrasp", "TestGrasp", "SynTraj", "TestTraj"
         )
-        success_line = "{:<20} | {:<10} | {:<10} | {:<10}".format(
+        success_line = "{:<20} | {:<10} | {:<10} | {:<10} | {:<10} | {:<10}".format(
             "Grasp:",
             f"{len(all_init_lst)}",
             f"{len(all_grasp_lst)},{100 * len(all_grasp_lst) / max(1, len(all_init_lst)):.0f}%",
-            f"{len(all_eval_lst)},{100 * len(all_eval_lst) / max(1, len(all_grasp_lst)):.0f}%",
+            f"{len(all_succ_grasp_lst)},{100 * len(all_succ_grasp_lst) / max(1, len(all_grasp_lst)):.0f}%",
+            f"{len(all_traj_lst)},{100 * len(all_traj_lst) / max(1, len(all_grasp_lst)):.0f}%",
+            f"{len(all_succ_traj_lst)},{100 * len(all_succ_traj_lst) / max(1, len(all_traj_lst)):.0f}%",
         )
-        object_line = "{:<20} | {:<10} | {:<10} | {:<10}".format(
+        object_line = "{:<20} | {:<10} | {:<10} | {:<10} | {:<10} | {:<10}".format(
             "Object:",
             f"{len(init_obj_lst)}",
             f"{len(grasp_obj_lst)},{100 * len(grasp_obj_lst) / max(1, len(init_obj_lst)):.0f}%",
-            f"{len(succ_obj_lst)},{100 * len(succ_obj_lst) / max(1, len(grasp_obj_lst)):.0f}%",
+            f"{len(succ_grasp_obj_lst)},{100 * len(succ_grasp_obj_lst) / max(1, len(grasp_obj_lst)):.0f}%",
+            f"{len(traj_obj_lst)},{100 * len(traj_obj_lst) / max(1, len(grasp_obj_lst)):.0f}%",
+            f"{len(succ_traj_obj_lst)},{100 * len(succ_traj_obj_lst) / max(1, len(traj_obj_lst)):.0f}%",
         )
 
         logging.info("-" * 65)

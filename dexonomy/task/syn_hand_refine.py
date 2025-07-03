@@ -252,7 +252,7 @@ def _single_hand_refine(params):
     return input_npy_path
 
 
-def task_syn_hand(configs):
+def task_sgrasp(configs):
     input_path_lst = glob.glob(
         os.path.join(configs.init_dir, "**/*.npy"), recursive=True
     )
@@ -267,10 +267,9 @@ def task_syn_hand(configs):
         logged_paths = [p.split("\n")[0] for p in logged_paths]
         input_path_lst = list(set(input_path_lst).difference(set(logged_paths)))
 
+    logging.info(f"Find {len(input_path_lst)} initialization")
     if len(input_path_lst) == 0:
         return
-
-    logging.info(f"Find {len(input_path_lst)} initialization")
 
     iterable_params = zip(input_path_lst, [configs] * len(input_path_lst))
     if configs.n_worker == 1 or configs.debug_viewer:

@@ -64,7 +64,7 @@ def read_npy_safe(params):
         return None
 
 
-def task_vis_usd(configs):
+def task_vusd(configs):
     if not os.path.exists(configs.init_dir):
         tmp_lst = get_template_name_lst(None, configs.grasp_dir)
     else:
@@ -72,17 +72,21 @@ def task_vis_usd(configs):
 
     for temp_name in tmp_lst:
         task_config = configs.task
-        if task_config.data_type == "grasp":
-            data_folder, check_folder = configs.grasp_dir, configs.succ_dir
-        elif task_config.data_type == "init":
+        if task_config.data_type == "init":
             data_folder, check_folder = configs.init_dir, configs.grasp_dir
-        elif task_config.data_type == "succ":
-            data_folder, check_folder = configs.succ_dir, None
+        elif task_config.data_type == "grasp":
+            data_folder, check_folder = configs.grasp_dir, configs.succ_grasp_dir
+            if not os.path.exists(check_folder):
+                check_folder = configs.succ_traj_dir
+        elif task_config.data_type == "succ_grasp":
+            data_folder, check_folder = configs.succ_grasp_dir, None
+        elif task_config.data_type == "succ_traj":
+            data_folder, check_folder = configs.succ_traj_dir, None
         elif task_config.data_type == "new_template":
             data_folder, check_folder = configs.new_template_dir, None
         else:
             raise NotImplementedError(
-                f"Valid choices: 'grasp', 'init', 'succ', 'init_template', 'new_template'. Current: '{task_config.data_type}' "
+                f"Valid choices: 'init', 'grasp', 'succ_grasp', 'succ_traj', 'new_template'. Current: '{task_config.data_type}' "
             )
         input_path_lst = glob(
             os.path.join(data_folder, temp_name, "**/*.npy"), recursive=True
