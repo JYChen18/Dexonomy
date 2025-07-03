@@ -130,7 +130,7 @@ def _single_anno2temp(params):
     temp_path = anno_path.replace(
         configs.raw_anno_dir, configs.init_template_dir
     ).replace(".yaml", ".npy")
-    np.save(temp_path, temp_data)  # type: ignore[reportArgumentType]
+    np.save(temp_path, temp_data)
 
     return
 

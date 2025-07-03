@@ -90,7 +90,7 @@ def _single_validation(params):
         if configs.adding_arm:
             np.save(
                 output_npy_path,
-                {"scene_path": grasp_data["scene_path"], "all_qpos": real_qpos_lst},  # type: ignore[reportArgumentType]
+                {"scene_path": grasp_data["scene_path"], "all_qpos": real_qpos_lst},
             )
         else:
             os.system(

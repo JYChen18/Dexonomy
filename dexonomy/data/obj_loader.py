@@ -49,7 +49,7 @@ class ObjSampleDataset(Dataset):
         if cfg_num is not None and cfg_num > 0:
             self.path_lst = self.path_lst[:cfg_num]
 
-        print(f"Object number: {len(self.path_lst)}")
+        logging.info(f"Object number: {len(self.path_lst)}")
         return
 
     def __len__(self):

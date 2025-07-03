@@ -248,7 +248,6 @@ class MuJoCo_BaseEnv:
             size=size,
             margin=self.sim_cfg.plane_margin,
         )
-        self.plane_num = 1
         return
 
     def _add_for_visualization(self):
@@ -352,7 +351,7 @@ class MuJoCo_BaseEnv:
         # object body id > object_id. hand_id >= hand body id > world_id.
         object_id = self.hand_body_num + len(self.data.mocap_pos)
         hand_id = self.hand_body_num
-        world_id = -1 if self.plane_num == 0 else 0
+        world_id = 0
 
         # Processing all contact information
         ho_contact = []
@@ -739,7 +738,9 @@ class MuJoCo_VisEnv(MuJoCo_BaseEnv):
                         radius=geom.size[0], height=2 * geom.size[1]
                     )
                 elif geom.type == 0:
-                    tm = trimesh.creation.box(extents=[2*geom.size[-1], 2*geom.size[-1], 0.001])
+                    tm = trimesh.creation.box(
+                        extents=[2 * geom.size[-1], 2 * geom.size[-1], 0.001]
+                    )
                 else:
                     raise NotImplementedError(
                         f"Unsupported mujoco primitive type: {geom.type}. Available choices: 2(icosphere), 3(capsule), 5(cylinder), 6(box)."

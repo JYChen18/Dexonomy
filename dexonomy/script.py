@@ -3,6 +3,7 @@ import os
 import sys
 import hydra
 import logging
+import subprocess
 
 from concurrent.futures import ProcessPoolExecutor
 from dexonomy.util.file_util import get_template_name_lst
@@ -126,6 +127,19 @@ def run_together(configs):
     test_log_path = os.path.join(
         configs.log_dir.replace(configs.task_name, "syn_test"), "main.log"
     )
+
+    # Check dependency
+    if configs.adding_arm:
+        if (
+            subprocess.run(
+                "pip show nvidia_curobo_bodex", shell=True, capture_output=True
+            ).returncode
+            != 0
+        ):
+            logging.error(
+                "Please install the third-party library BODex for trajectory synthesis!"
+            )
+            exit(1)
 
     # Use ProcessPoolExecutor to run functions in parallel
     with ProcessPoolExecutor() as executor:
