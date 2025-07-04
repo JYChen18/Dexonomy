@@ -9,7 +9,6 @@ import trimesh
 import numpy as np
 import mujoco
 import mujoco.viewer
-import transforms3d.quaternions as tq
 
 from dexonomy.util.np_rot_util import (
     np_interp_slide,
@@ -141,6 +140,8 @@ class MuJoCo_BaseEnv:
             m.file = os.path.join(os.path.dirname(xml_path), child_spec.meshdir, m.file)
         child_spec.meshdir = self.spec.meshdir
         self.hand_body_num = len(child_spec.bodies)
+        for j in child_spec.joints:
+            j.margin = 0.1
         for g in child_spec.geoms:
             # This solimp and solref comes from the Shadow Hand xml
             # The body will be more "rigid" and less "soft"
@@ -342,6 +343,16 @@ class MuJoCo_BaseEnv:
 
     def get_hand_qpos(self) -> np.ndarray:
         return self.data.qpos[: self.model.nq - len(self._obj_init_qpos)]
+
+    def check_qpos_limit(self) -> bool:
+        for j in range(self.model.njnt):
+            if self.model.jnt_limited[j]:
+                hand_qpos_j = self.data.qpos[self.model.jnt_qposadr[j]]
+                limit_lower = self.model.jnt_range[j, 0]
+                limit_upper = self.model.jnt_range[j, 1]
+                if hand_qpos_j < limit_lower or hand_qpos_j > limit_upper:
+                    return False
+        return True
 
     def get_contact_info(self, obj_margin=None) -> tuple[list[dict], list[dict]]:
         if obj_margin is not None:

@@ -10,7 +10,7 @@ This tutorial guides you through the process of adding a new hand model and anno
 |3 | assets/hand/new_hand/body_group.yaml | Hand body groups for contact check in [syn_hand_refine.py](https://github.com/JYChen18/Dexonomy/blob/main/dexonomy/task/syn_hand_refine.py#L34) |
 |4 | assets/hand/new_hand/raw_anno/${TEMPLATE_NAME}.yaml | Annotated grasp template including hand qpos and hand contacts |
 |5 | assets/hand/new_hand/anno_keypoint.yaml | Optional reusable keypoints in bodyframe |
-|6 | assets/hand/new_hand/collision_skeleton.yaml | Skeleton config for collision detection in [syn_object_align.py](https://github.com/JYChen18/Dexonomy/blob/main/dexonomy/task/syn_object_align.py) |
+|6 | assets/hand/new_hand/collision_skeleton.yaml | Skeleton config for collision detection in [init_object_align.py](https://github.com/JYChen18/Dexonomy/blob/main/dexonomy/task/init_object_align.py) |
 
 ---
 

@@ -9,7 +9,7 @@ python -m dexonomy.main task=templ hand=allegro
 - Results are saved to: `init_template_dir` (default: `assets/hand/allegro/init_template`) defined in [dexonomy/config/base.yaml](https://github.com/JYChen18/Dexonomy/blob/main/dexonomy/config/base.yaml#L23)
 
 ## Grasp Synthesis
-Grasp synthesis consists of three core tasks: `init`, `sgrasp`, and `test`.
+Grasp synthesis consists of three core tasks: `init`, `syngrasp`, and `test`.
 
 ### 1. `init`: Optimize Object Pose
 This task samples and optimizes the object pose while keeping the hand fixed. It uses a single initial template on one GPU:
@@ -20,17 +20,17 @@ python -m dexonomy.main task=init hand=allegro exp_name=first_try template_name=
 - Logs are saved to: `log_dir` (default: `output/first_try_allegro/log/init_0/main.log`)
 
 
-### 2. `sgrasp`: Refine Hand Pose
+### 2. `syngrasp`: Refine Hand Pose
 This task refines the hand's palm pose and joint positions (qpos) in simulation while keeping the object fixed. Currently, it only supports MuJoCo on CPU.
 ```bash
-python -m dexonomy.main task=sgrasp hand=allegro exp_name=first_try
+python -m dexonomy.main task=syngrasp hand=allegro exp_name=first_try
 ```
 - Valid results are saved to: `grasp_dir` (default: `output/first_try_allegro/grasp_data`)
-- Logs are saved to: `log_dir` (default: `output/first_try_allegro/log/sgrasp_0/main.log`) 
+- Logs are saved to: `log_dir` (default: `output/first_try_allegro/log/syngrasp_0/main.log`) 
 
 #### Debugging Options
 ```bash
-python -m dexonomy.main task=sgrasp hand=allegro exp_name=first_try skip=False debug_name=core_bottle_523cddb320608c09a37f3fc191551700 debug_render=True hydra.verbose=true 
+python -m dexonomy.main task=syngrasp hand=allegro exp_name=first_try skip=False debug_name=core_bottle_523cddb320608c09a37f3fc191551700 debug_render=True hydra.verbose=true 
 ```
 
 - `debug_render=True`: Render the refinement process and save GIFs to `debug_dir` (default: `output/first_try_allegro/debug`). (Note: if there is an OpenGL-related error, try to first run `export MUJOCO_GL=egl`)
@@ -49,20 +49,20 @@ python -m dexonomy.main task=test hand=allegro exp_name=first_try
 ```
 - Successful grasps are saved to: `succ_grasp_dir` (default: `output/first_try_allegro/succ_grasp`)
 - New grasp templates are saved to: `new_template_dir` (default: `output/first_try_allegro/new_template`)
-- The same debugging options as in `sgrasp` are also available here.
+- The same debugging options as in `syngrasp` are also available here.
 
 ### 4. `dexonomy.script`: Run All Three Tasks Together
-You can run all above three tasks (`init`, `sgrasp`, `test`) together using:  
+You can run all above three tasks (`init`, `syngrasp`, `test`) together using:  
 ```bash
 python -m dexonomy.script hand=allegro exp_name=first_try 'template_name=[fingertip_small,fingertip_mid,fingertip_large]' 'gpu_list=[5,6,7]'
 ```
 - `init` will distribute multiple templates across GPUs in `gpu_list` and run in parallel.
-- `sgrasp` and `test` will automatically check and run as soon as there are unprocessed data from previous stage.
+- `syngrasp` and `test` will automatically check and run as soon as there are unprocessed data from previous stage.
 
 #### Customize Configurations
 You can override configuration parameters per task like:
 ```bash
-python -m dexonomy.script hand=allegro exp_name=first_try 'template_name=[fingertip_small,fingertip_mid,fingertip_large]' 'gpu_list=[5,6,7]' +init.object.cfg_num=20 '+sgrasp.grasp.qp_filter.miu_coef=[0.5, 0.02]'
+python -m dexonomy.script hand=allegro exp_name=first_try 'template_name=[fingertip_small,fingertip_mid,fingertip_large]' 'gpu_list=[5,6,7]' +init.object.cfg_num=20 '+syngrasp.grasp.qp_filter.miu_coef=[0.5, 0.02]'
 ```
 
 
@@ -77,7 +77,7 @@ python -m dexonomy.main task=vusd hand=allegro exp_name=first_try task.max_num=2
 - `task.max_num`: Limit number of data to visualize.
 - `task.data_type`: Specifies which data directory to visualize. 
     - `init`: Initializations in `init_dir` (output of `init`)
-    - `grasp`: Refined grasps in `grasp_dir` (output of `sgrasp`)
+    - `grasp`: Refined grasps in `grasp_dir` (output of `syngrasp`)
     - `succ_grasp` (default): Successful grasps in `succ_grasp_dir` (output of `test`)
     - `new_template`: Newly generated templates in `new_template_dir` (output of `test`)
 - `task.check_success`: Filters the data to visualize

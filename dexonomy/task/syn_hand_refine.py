@@ -11,6 +11,10 @@ from dexonomy.util.np_rot_util import np_array32
 from dexonomy.util.file_util import load_scene_cfg
 
 
+class SynGraspException(Exception):
+    pass
+
+
 def _collision_filter(ho_contact_lst, hh_contact_lst, filter_config, skip_logging=True):
     if len(hh_contact_lst) > 0:
         for c in hh_contact_lst:
@@ -84,166 +88,174 @@ def _single_hand_refine(params):
     sim_env.reset_qpos(grasp_data["grasp_qpos"][0])
     sim_env.set_obj_margin(task_config.grasp.ho_target_dist)
 
-    hand_contact_body_names = grasp_data["hand_contact_body_names"]
-    hand_bodyframe_contact = sim_env.get_hand_bodyframe_contact(
-        hand_contact_body_names, grasp_data["hand_worldframe_contacts"]
-    )
-    for ii in range(task_config.grasp.outer_iter):
-        total_loss = sim_env.apply_force_on_hand(
-            hand_contact_body_names,
-            hand_bodyframe_contact,
-            grasp_data["obj_worldframe_contacts"],
+    try:
+        # Generate grasp qpos
+        hand_contact_body_names = grasp_data["hand_contact_body_names"]
+        hand_bodyframe_contact = sim_env.get_hand_bodyframe_contact(
+            hand_contact_body_names, grasp_data["hand_worldframe_contacts"]
         )
+        for ii in range(task_config.grasp.outer_iter):
+            total_loss = sim_env.apply_force_on_hand(
+                hand_contact_body_names,
+                hand_bodyframe_contact,
+                grasp_data["obj_worldframe_contacts"],
+            )
 
-        sim_env.simulation_step(task_config.grasp.inner_iter)
+            sim_env.simulation_step(task_config.grasp.inner_iter)
 
-        if ii == 0 or (
-            ii < task_config.grasp.outer_iter - 1
-            and np.max(prev_total_loss - total_loss) > 1e-4
+            if ii == 0 or (
+                ii < task_config.grasp.outer_iter - 1
+                and np.max(prev_total_loss - total_loss) > 1e-4
+            ):
+                prev_total_loss = np.copy(total_loss)
+                continue
+            else:
+                prev_total_loss = np.copy(total_loss)
+
+            ho_contact_lst, hh_contact_lst = sim_env.get_contact_info(
+                task_config.grasp.contact_threshold
+            )
+            if not _collision_filter(
+                ho_contact_lst, hh_contact_lst, task_config.grasp.coll_filter
+            ):
+                continue
+            break
+
+        grasp_data["grasp_qpos"] = np_array32(sim_env.get_hand_qpos())[None]
+        # Check qpos limit
+        if not sim_env.check_qpos_limit():
+            raise SynGraspException("Grasp qpos out of limit")
+
+        # Check necessary contact between hand and object
+        if len(ho_contact_lst) == 0 or not _body_filter(
+            ho_contact_lst,
+            grasp_data["necessary_contact_body_names"],
+            task_config.grasp.body_filter,
         ):
-            prev_total_loss = np.copy(total_loss)
-            continue
-        else:
-            prev_total_loss = np.copy(total_loss)
+            raise SynGraspException("Grasp missing contact")
 
-        ho_contact_lst, hh_contact_lst = sim_env.get_contact_info(
-            task_config.grasp.contact_threshold
-        )
+        # Check collision between hand and object
         if not _collision_filter(
-            ho_contact_lst, hh_contact_lst, task_config.grasp.coll_filter
-        ):
-            continue
-        break
-
-    grasp_data["grasp_qpos"] = np_array32(sim_env.get_hand_qpos())[None]
-
-    if (
-        len(ho_contact_lst) == 0
-        or not _collision_filter(
             ho_contact_lst,
             hh_contact_lst,
             task_config.grasp.coll_filter,
             skip_logging=False,
-        )
-        or not _body_filter(
-            ho_contact_lst,
-            grasp_data["necessary_contact_body_names"],
-            task_config.grasp.body_filter,
-        )
-    ):
-        sim_env.debug_postprocess(
-            save_path=input_npy_path.replace(
-                configs.init_dir, configs.debug_dir
-            ).replace(".npy", ".gif")
-        )
-        logging.debug(f"Fail (Grasp): {len(ho_contact_lst)} {input_npy_path}")
-        return input_npy_path
-
-    hand_point = np.array([c["contact_pos"] for c in ho_contact_lst])
-    hand_normal = np.array([c["contact_normal"] for c in ho_contact_lst])
-    hand_body = [c["body1_name"] for c in ho_contact_lst]
-    contact_wrench = _qp_filter(
-        hand_point,
-        hand_normal,
-        grasp_data["ext_wrench"],
-        grasp_data["ext_center"],
-        task_config.grasp.qp_filter,
-    )
-    if contact_wrench is None:
-        sim_env.debug_postprocess(
-            save_path=input_npy_path.replace(
-                configs.init_dir, configs.debug_dir
-            ).replace(".npy", ".gif")
-        )
-        logging.debug(f"Fail (QP): {input_npy_path}")
-        return input_npy_path
-
-    grasp_data["squeeze_qpos"] = np_array32(
-        sim_env.get_squeeze_qpos(
-            grasp_data["grasp_qpos"][0],
-            hand_body,
-            hand_point,
-            10 * contact_wrench,
-        )
-    )[None]
-
-    if configs.update_template == "body":
-        hand_worldframe_contacts = sim_env.get_hand_worldframe_contact(
-            hand_contact_body_names, hand_bodyframe_contact
-        )
-    elif configs.update_template == "arbi":
-        hand_worldframe_contacts = np.concatenate([hand_point, hand_normal], axis=-1)
-        grasp_data["hand_contact_body_names"] = hand_body
-    elif configs.update_template == "nearest" or configs.update_template == False:
-        hand_worldframe_contacts = sim_env.get_hand_worldframe_contact(
-            hand_contact_body_names, hand_bodyframe_contact
-        )
-        for body_name, wf_hc in zip(hand_contact_body_names, hand_worldframe_contacts):
-            for c in ho_contact_lst:
-                if c["body1_name"] == body_name:
-                    dist = np.linalg.norm(wf_hc[:3] - c["contact_pos"])
-                    angle = np.arccos(
-                        np.clip(
-                            (wf_hc[3:] * c["contact_normal"]).sum(), a_min=-1, a_max=1
-                        )
-                    )
-                    if dist < 0.03 and angle < np.pi / 4:
-                        wf_hc[:3] = c["contact_pos"]
-                        wf_hc[3:] = c["contact_normal"]
-                        break
-    else:
-        raise NotImplementedError(
-            f"Undefined update_template strategy: {configs.update_template}. Available choices: [False, 'nearest', 'body', 'arbi']"
-        )
-    grasp_data["hand_worldframe_contacts"] = hand_worldframe_contacts
-
-    if task_config.pregrasp:
-        pregrasp_lst = []
-        step_group_num = 2
-        for ii in range(task_config.pregrasp.outer_iter):
-            curr_ho_margin = task_config.pregrasp.ho_target_dist * min(
-                (ii + 1) / task_config.pregrasp.outer_iter * 2, 1
-            )
-            sim_env.set_obj_margin(curr_ho_margin)
-            sim_env.keep_hand_stable()
-            sim_env.simulation_step(task_config.grasp.inner_iter)
-            pregrasp_lst.append(np.copy(sim_env.get_hand_qpos()))
-            if (
-                ii % step_group_num == 0
-                and curr_ho_margin >= task_config.pregrasp.ho_target_dist
-            ):
-                ho_contact_lst, hh_contact_lst = sim_env.get_contact_info()
-
-                if not _collision_filter(
-                    ho_contact_lst, hh_contact_lst, task_config.pregrasp.coll_filter
-                ):
-                    continue
-                break
-
-        if not _collision_filter(
-            ho_contact_lst,
-            hh_contact_lst,
-            task_config.pregrasp.coll_filter,
-            skip_logging=False,
         ):
-            sim_env.debug_postprocess(
-                save_path=input_npy_path.replace(
-                    configs.init_dir, configs.debug_dir
-                ).replace(".npy", ".gif")
-            )
-            logging.debug(f"Fail (Pregrasp): {input_npy_path}")
-            return input_npy_path
+            raise SynGraspException("Grasp collision")
 
-        grasp_data["pregrasp_qpos"] = np_array32(np.stack(pregrasp_lst, axis=0))[
-            ::-step_group_num
-        ]
+        # Check grasp quality using QP
+        hand_point = np.array([c["contact_pos"] for c in ho_contact_lst])
+        hand_normal = np.array([c["contact_normal"] for c in ho_contact_lst])
+        hand_body = [c["body1_name"] for c in ho_contact_lst]
+        contact_wrench = _qp_filter(
+            hand_point,
+            hand_normal,
+            grasp_data["ext_wrench"],
+            grasp_data["ext_center"],
+            task_config.grasp.qp_filter,
+        )
+        if contact_wrench is None:
+            raise SynGraspException("Grasp bad QP")
+
+        # Generate squeeze qpos
+        grasp_data["squeeze_qpos"] = np_array32(
+            sim_env.get_squeeze_qpos(
+                grasp_data["grasp_qpos"][0],
+                hand_body,
+                hand_point,
+                10 * contact_wrench,
+            )
+        )[None]
+
+        # Update contact information in template
+        if configs.update_template == "body":
+            hand_worldframe_contacts = sim_env.get_hand_worldframe_contact(
+                hand_contact_body_names, hand_bodyframe_contact
+            )
+        elif configs.update_template == "arbi":
+            hand_worldframe_contacts = np.concatenate(
+                [hand_point, hand_normal], axis=-1
+            )
+            grasp_data["hand_contact_body_names"] = hand_body
+        elif configs.update_template == "nearest" or configs.update_template == False:
+            hand_worldframe_contacts = sim_env.get_hand_worldframe_contact(
+                hand_contact_body_names, hand_bodyframe_contact
+            )
+            for body_name, wf_hc in zip(
+                hand_contact_body_names, hand_worldframe_contacts
+            ):
+                for c in ho_contact_lst:
+                    if c["body1_name"] == body_name:
+                        dist = np.linalg.norm(wf_hc[:3] - c["contact_pos"])
+                        angle = np.arccos(
+                            np.clip(
+                                (wf_hc[3:] * c["contact_normal"]).sum(),
+                                a_min=-1,
+                                a_max=1,
+                            )
+                        )
+                        if dist < 0.03 and angle < np.pi / 4:
+                            wf_hc[:3] = c["contact_pos"]
+                            wf_hc[3:] = c["contact_normal"]
+                            break
+        else:
+            raise NotImplementedError(
+                f"Undefined update_template strategy: {configs.update_template}. Available choices: [False, 'nearest', 'body', 'arbi']"
+            )
+        grasp_data["hand_worldframe_contacts"] = hand_worldframe_contacts
+
+        # Generate pregrasp qpos list
+        if task_config.pregrasp:
+            pregrasp_lst = []
+            step_group_num = 2
+            for ii in range(task_config.pregrasp.outer_iter):
+                curr_ho_margin = task_config.pregrasp.ho_target_dist * min(
+                    (ii + 1) / task_config.pregrasp.outer_iter * 2, 1
+                )
+                sim_env.set_obj_margin(curr_ho_margin)
+                sim_env.keep_hand_stable()
+                sim_env.simulation_step(task_config.grasp.inner_iter)
+                pregrasp_lst.append(np.copy(sim_env.get_hand_qpos()))
+                if not sim_env.check_qpos_limit():
+                    raise SynGraspException("Pregrasp qpos out of limit")
+                if (
+                    ii % step_group_num == 0
+                    and curr_ho_margin >= task_config.pregrasp.ho_target_dist
+                ):
+                    ho_contact_lst, hh_contact_lst = sim_env.get_contact_info()
+
+                    if not _collision_filter(
+                        ho_contact_lst, hh_contact_lst, task_config.pregrasp.coll_filter
+                    ):
+                        continue
+                    break
+
+            # Check collision between hand and object
+            if not _collision_filter(
+                ho_contact_lst,
+                hh_contact_lst,
+                task_config.pregrasp.coll_filter,
+                skip_logging=False,
+            ):
+                raise SynGraspException("Pregrasp collision")
+
+            grasp_data["pregrasp_qpos"] = np_array32(np.stack(pregrasp_lst, axis=0))[
+                ::-step_group_num
+            ]
+    except SynGraspException as e:
+        sim_env.debug_postprocess(
+            save_path=input_npy_path.replace(
+                configs.init_dir, configs.debug_dir
+            ).replace(".npy", ".gif")
+        )
+        logging.debug(f"Fail ({e}) {input_npy_path}")
+        return input_npy_path
 
     sim_env.debug_postprocess(
         save_path=input_npy_path.replace(configs.init_dir, configs.debug_dir).replace(
             ".npy", ".gif"
         )
     )
-
     os.makedirs(os.path.dirname(grasp_npy_path), exist_ok=True)
     grasp_data["evolution_num"] += 1
     np.save(grasp_npy_path, grasp_data)
@@ -252,7 +264,7 @@ def _single_hand_refine(params):
     return input_npy_path
 
 
-def task_sgrasp(configs):
+def task_syngrasp(configs):
     input_path_lst = glob.glob(
         os.path.join(configs.init_dir, "**/*.npy"), recursive=True
     )

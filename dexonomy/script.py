@@ -4,7 +4,6 @@ import sys
 import hydra
 import logging
 import subprocess
-from copy import deepcopy
 
 from concurrent.futures import ProcessPoolExecutor
 from dexonomy.util.file_util import get_template_name_lst
@@ -20,7 +19,7 @@ def check_finish_init(log_path):
     return False
 
 
-def check_finish_sgrasp(log_path):
+def check_finish_syngrasp(log_path):
     if os.path.exists(log_path):
         with open(log_path, "r") as f:
             log_info = f.readlines()
@@ -63,13 +62,11 @@ def run_init(
     return
 
 
-def run_sgrasp(general_config_str, sgrasp_config_str, hand_log_path):
-    sgrasp_cmd = (
-        f"python -m dexonomy.main task=sgrasp {general_config_str} {sgrasp_config_str}"
-    )
-    logging.info(sgrasp_cmd)
-    while not check_finish_sgrasp(hand_log_path):
-        os.system(sgrasp_cmd)
+def run_syngrasp(general_config_str, syngrasp_config_str, hand_log_path):
+    syngrasp_cmd = f"python -m dexonomy.main task=syngrasp {general_config_str} {syngrasp_config_str}"
+    logging.info(syngrasp_cmd)
+    while not check_finish_syngrasp(hand_log_path):
+        os.system(syngrasp_cmd)
     return
 
 
@@ -106,14 +103,14 @@ def run_together(configs):
     override_config = {
         "general": [],
         "init": [],
-        "sgrasp": [],
+        "syngrasp": [],
         "test": [],
     }
     for argv in sys.argv[1:]:
         if "+init." in argv:
             override_config["init"].append(argv.replace("+init.", "task."))
-        elif "+sgrasp." in argv:
-            override_config["sgrasp"].append(argv.replace("+sgrasp.", "task."))
+        elif "+syngrasp." in argv:
+            override_config["syngrasp"].append(argv.replace("+syngrasp.", "task."))
         elif "+test." in argv:
             override_config["test"].append(argv.replace("+test.", "task."))
         else:
@@ -151,8 +148,8 @@ def run_together(configs):
     traj_test_log_path = os.path.join(
         os.path.dirname(configs.log_dir), "test_1", "main.log"
     )
-    sgrasp_log_path = os.path.join(
-        os.path.dirname(configs.log_dir), "sgrasp_0", "main.log"
+    syngrasp_log_path = os.path.join(
+        os.path.dirname(configs.log_dir), "syngrasp_0", "main.log"
     )
 
     # Check dependency
@@ -188,10 +185,10 @@ def run_together(configs):
             )
         futures.append(
             executor.submit(
-                run_sgrasp,
+                run_syngrasp,
                 override_config["general"],
-                override_config["sgrasp"],
-                sgrasp_log_path,
+                override_config["syngrasp"],
+                syngrasp_log_path,
             )
         )
         if not configs.skip_test_grasp:
