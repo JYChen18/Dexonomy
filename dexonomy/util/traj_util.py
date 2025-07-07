@@ -60,6 +60,11 @@ def get_full_traj(
                     for p in move_obj_lst
                 ]
             )
+        i = len(extdir_lst) - 1
+        for extdir in reversed(extdir_lst):
+            if extdir is None:
+                extdir_lst[i] = extdir_lst[i + 1]
+            i -= 1
     else:
         target_obj_pose = init_obj_pose
     return qpos_lst, ctype_lst, extdir_lst, interp_lst, target_obj_pose

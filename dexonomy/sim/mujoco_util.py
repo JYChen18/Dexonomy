@@ -339,7 +339,16 @@ class MuJoCo_BaseEnv:
             logging.error(
                 f"Too small external force: {extforce}. Please check the axis in task of scene cfg."
             )
-        self.data.xfrc_applied[self._obj_interest_bodyid][:3] = extforce
+        self.data.qfrc_applied[:] = 0
+        mujoco.mj_applyFT(
+            self.model,
+            self.data,
+            extforce,
+            extforce * 0,
+            self.data.subtree_com[self._obj_interest_bodyid],
+            self._obj_interest_bodyid,
+            self.data.qfrc_applied,
+        )
 
     def get_hand_qpos(self) -> np.ndarray:
         return self.data.qpos[: self.model.nq - len(self._obj_init_qpos)]
