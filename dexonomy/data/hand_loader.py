@@ -12,7 +12,7 @@ import torch
 import numpy as np
 from transforms3d import quaternions as tq
 
-from dexonomy.util.np_rot_util import (
+from dexonomy.util.np_util import (
     np_array32,
     np_normal_to_rot,
     np_transform_points,

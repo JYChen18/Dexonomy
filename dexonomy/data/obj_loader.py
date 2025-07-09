@@ -11,7 +11,7 @@ import logging
 logger = logging.getLogger("trimesh")
 logger.setLevel(logging.ERROR)
 
-from dexonomy.util.np_rot_util import (
+from dexonomy.util.np_util import (
     np_array32,
     np_normal_to_rot,
     np_axis_angle_rotation,
@@ -92,11 +92,14 @@ class ObjSampleDataset(Dataset):
             wf_ext_wrench = np.concatenate(
                 [scene_cfg["task"]["axis"] * obj_mass, scene_cfg["task"]["axis"] * 0.0]
             )
-        elif scene_cfg["task"]["type"] == "force_closure":
+        elif (
+            scene_cfg["task"]["type"] == "force_closure"
+            or scene_cfg["task"]["type"] == "keyframe"
+        ):
             wf_ext_wrench = np.zeros(6)
         else:
             raise NotImplementedError(
-                f"Unsupported task type: {scene_cfg['task']['type']}. Avaiable choices: 'hinge', 'slide', 'force_closure'."
+                f"Unsupported task type: {scene_cfg['task']['type']}. Avaiable choices: 'hinge', 'slide', 'force_closure', 'keyframe'."
             )
 
         collision_plane = None

@@ -7,13 +7,13 @@ import traceback
 
 from dexonomy.sim import MuJoCo_TestEnv, HandCfg, MuJoCo_TestCfg
 from dexonomy.util.file_util import load_scene_cfg, load_json
-from dexonomy.util.traj_util import get_full_traj
+from dexonomy.util.traj_util import get_planner
 
 
 def _single_validation(params):
     input_npy_path, configs = params[0], params[1]
     data_dir = configs.traj_dir if configs.adding_arm else configs.grasp_dir
-    task_config = configs.task
+    op_config = configs.op
     hand_config = configs.hand
 
     grasp_data = np.load(input_npy_path, allow_pickle=True).item()
@@ -44,7 +44,7 @@ def _single_validation(params):
         ),
         scene_cfg=scene_cfg,
         sim_cfg=MuJoCo_TestCfg(
-            friction_coef=task_config.miu_coef,
+            friction_coef=op_config.miu_coef,
         ),
         debug_render=configs.debug_render,
         debug_viewer=configs.debug_viewer,
@@ -52,15 +52,13 @@ def _single_validation(params):
 
     init_obj_pose = np.copy(sim_env.get_interest_object_pose())
 
-    qpos_lst, ctype_lst, extdir_lst, interp_lst, target_obj_pose = get_full_traj(
-        init_obj_pose=init_obj_pose,
-        move_cfg=scene_cfg["task"],
-        grasp_qpos=grasp_data["grasp_qpos"],
-        squeeze_qpos=grasp_data["squeeze_qpos"],
-        pregrasp_qpos=grasp_data["pregrasp_qpos"],
-        approach_qpos=(
-            grasp_data["robot_pose"] if "robot_pose" in grasp_data else None
-        ),
+    planner = get_planner(scene_cfg["task"])
+    qpos_lst, ctype_lst, extdir_lst, target_obj_pose = planner.plan_trajectory(
+        init_obj_pose,
+        grasp_data["pregrasp_qpos"],
+        grasp_data["grasp_qpos"],
+        grasp_data["squeeze_qpos"],
+        grasp_data["robot_pose"] if "robot_pose" in grasp_data else None,
     )
 
     if scene_cfg["task"]["type"] == "force_closure":
@@ -72,10 +70,9 @@ def _single_validation(params):
         qpos_lst,
         ctype_lst,
         extdir_lst,
-        interp_lst,
         target_obj_pose,
-        task_config.trans_thre,
-        task_config.angle_thre,
+        op_config.trans_thre,
+        op_config.angle_thre,
     )
 
     sim_env.debug_postprocess(
@@ -123,7 +120,7 @@ def safe_validation(params):
         return params[0]
 
 
-def task_test(configs):
+def op_eval(configs):
     data_dir = configs.traj_dir if configs.adding_arm else configs.grasp_dir
     input_path_lst = glob.glob(os.path.join(data_dir, "**/*.npy"), recursive=True)
     if configs.debug_name is not None:

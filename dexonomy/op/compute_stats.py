@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 import torch
 
 from dexonomy.util.file_util import get_template_name_lst
-from dexonomy.util.torch_rot_util import (
+from dexonomy.util.torch_util import (
     torch_quaternion_to_matrix,
     torch_matrix_to_axis_angle,
 )
@@ -87,7 +87,7 @@ def get_diversity(data_lst):
     return explained_variance
 
 
-def task_stat(configs):
+def op_stats(configs):
     if not os.path.exists(configs.init_dir):
         tmp_lst = get_template_name_lst(None, configs.grasp_dir)
     else:
@@ -130,30 +130,28 @@ def task_stat(configs):
         succ_traj_obj_lst = get_obj_name_lst(all_succ_traj_lst, template_name)
 
         if len(all_succ_grasp_lst) != 0 and (
-            configs.task.scale_fig
-            or configs.task.diversity
-            or configs.task.contact_number
+            configs.op.scale_fig or configs.op.diversity or configs.op.contact_number
         ):
             with multiprocessing.Pool(processes=configs.n_worker) as pool:
                 result_iter = pool.imap_unordered(read_data, all_succ_grasp_lst)
                 data_lst = list(result_iter)
 
-            if configs.task.scale_fig:
+            if configs.op.scale_fig:
                 save_path = os.path.join(
                     os.path.dirname(configs.log_path), template_name + "_objscale.png"
                 )
                 draw_obj_scale_fig(data_lst, save_path)
 
-            if configs.task.diversity:
+            if configs.op.diversity:
                 pca_eigenvalue = get_diversity(data_lst)
 
-            if configs.task.contact_number:
+            if configs.op.contact_number:
                 average_contact_number = np.mean(
                     [d["contact_number"] for d in data_lst]
                 )
 
         header = "{:<20} | {:<10} | {:<10} | {:<10} | {:<10} | {:<10}".format(
-            template_name, "Init", "SynGrasp", "TestGrasp", "SynTraj", "TestTraj"
+            template_name, "Init", "SynGrasp", "EvalGrasp", "SynTraj", "EvalTraj"
         )
         success_line = "{:<20} | {:<10} | {:<10} | {:<10} | {:<10} | {:<10}".format(
             "Grasp:",
@@ -176,7 +174,7 @@ def task_stat(configs):
         logging.info(header)
         logging.info(success_line)
         logging.info(object_line)
-        if configs.task.diversity:
+        if configs.op.diversity:
             logging.info(f"Diversity: {pca_eigenvalue}")
-        if configs.task.contact_number:
+        if configs.op.contact_number:
             logging.info(f"Contact Number: {average_contact_number}")

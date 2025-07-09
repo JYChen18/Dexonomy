@@ -8,3 +8,4 @@ debug*
 output*
 assets/object
 MUJOCO_LOG.TXT
+task/

@@ -9,8 +9,8 @@ import traceback
 from glob import glob
 
 from dexonomy.util.warp_util import MeshQueryPoint, MeshLineSegCollision
-from dexonomy.util.np_rot_util import np_array32
-from dexonomy.util.torch_rot_util import (
+from dexonomy.util.np_util import np_array32
+from dexonomy.util.torch_util import (
     torch_transform_points,
     torch_quaternion_to_matrix,
     torch_matrix_to_quaternion,
@@ -358,15 +358,15 @@ class ObjectAligner:
         return out_valid_idx
 
 
-def task_init(configs):
-    task_config = configs.task
+def op_init(configs):
+    op_config = configs.op
     assert os.path.exists(
         os.path.join(configs.init_template_dir, configs.template_name + ".npy")
     )
     logging.info(f"Hand template name: {configs.template_name}")
 
-    obj_loader = get_object_dataloader(task_config.object, configs.n_worker)
-    matcher = ObjectAligner(task_config.device, **task_config.matcher)
+    obj_loader = get_object_dataloader(op_config.object, configs.n_worker)
+    matcher = ObjectAligner(op_config.device, **op_config.matcher)
     try:
         hand_library = HandTemplateLibrary(
             xml_path=configs.hand.xml_path,
@@ -378,7 +378,7 @@ def task_init(configs):
             num_workers=configs.n_worker,
         )
 
-        for eee in range(task_config.epoch):
+        for eee in range(op_config.epoch):
             logging.info(f"Epoch {eee}")
             for obj_samples in obj_loader:
                 # Check exist path
@@ -399,7 +399,7 @@ def task_init(configs):
 
                 obj_samples = {
                     k: (
-                        v.to(task_config.device, non_blocking=True)
+                        v.to(op_config.device, non_blocking=True)
                         if isinstance(v, torch.Tensor)
                         else v
                     )
@@ -411,7 +411,7 @@ def task_init(configs):
                 )
 
                 hand_temp_dict = hand_library.get_batched_data(
-                    obj_samples["sampled_rot"].shape[:2], task_config.device
+                    obj_samples["sampled_rot"].shape[:2], op_config.device
                 )
 
                 result_dict = matcher.matching(
@@ -498,7 +498,7 @@ def task_init(configs):
                             "scene_path": scene_path,
                         },
                     )
-        logging.info("Finish task init.")
+        logging.info("Finish op init.")
     except BaseException as e:
         hand_library.stop()
         error_traceback = traceback.format_exc()

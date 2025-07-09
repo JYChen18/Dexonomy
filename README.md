@@ -39,7 +39,11 @@ conda activate dexonomy
 conda install pytorch==2.5.0 pytorch-cuda=12.1 -c pytorch -c nvidia 
 
 # [Optional] Only necessary for grasping trajectory synthesis
-pip install -e ./third_party/BODex --no-build-isolation
+sudo apt install git-lfs
+cd third_party/BODex
+git lfs pull
+pip install -e . --no-build-isolation
+cd ...
 
 # Install this package
 pip install -e .
@@ -66,7 +70,7 @@ Alternatively, you can pre-process your own object assets using [MeshProcess](ht
 ### 2. Synthesize Grasps
 Run the following commands to synthesize grasps for a specific grasp type:
 ```bash
-python -m dexonomy.main task=templ   # Generate initial template from human annotations
+python -m dexonomy.main op=tmpl  # Generate initial template from human annotations
 python -m dexonomy.script 'template_name=[1_Large_Diameter]'
 ```
 

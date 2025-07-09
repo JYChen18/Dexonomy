@@ -23,7 +23,13 @@ def np_interp_slide(pose1: np.ndarray, pose2: np.ndarray, step: int) -> np.ndarr
     return np.concatenate([trans_interp, quat_interp], axis=1)
 
 
-def np_interp_hinge(pose1, hinge_pos, hinge_axis, move_angle, step):
+def np_interp_hinge(
+    pose1: np.ndarray,
+    hinge_pos: np.ndarray,
+    hinge_axis: np.ndarray,
+    move_angle: float,
+    step: int,
+) -> np.ndarray:
     """
     pose1: (7,) initial pose (translation and quaternion)
     hinge_pos: (x,y,z) of hinge point
@@ -48,7 +54,7 @@ def np_interp_hinge(pose1, hinge_pos, hinge_axis, move_angle, step):
         new_pose[3:] = new_rot.as_quat(scalar_first=True)
         interpolated_poses.append(new_pose)
 
-    return interpolated_poses
+    return np.array(interpolated_poses)
 
 
 def np_interp_qpos(qpos1: np.ndarray, qpos2: np.ndarray, step: int) -> np.ndarray:
@@ -166,7 +172,7 @@ def np_inv_transform_points(
     return resulted_points
 
 
-def np_get_delta_pose(pose1, pose2):
+def np_get_delta_pose(pose1: np.ndarray, pose2: np.ndarray) -> tuple[float, float]:
     # qpos: [x, y, z, qw, qx, qy, qz]
     delta_pos = np.linalg.norm(pose1[:3] - pose2[:3])  # (1)
     q1_inv = tq.qinverse(pose1[3:]).astype(np.float32)
@@ -176,6 +182,33 @@ def np_get_delta_pose(pose1, pose2):
     angle = 2 * np.arccos(q_rel[0])
     angle_degrees = np.degrees(angle)
     return delta_pos, angle_degrees
+
+
+def np_get_relative_pose(pose1: np.ndarray, pose3: np.ndarray) -> np.ndarray:
+    """
+    Get the relative pose between two poses.
+    """
+    quat1_inv = tq.qinverse(pose1[3:7])
+    return np.concatenate(
+        [
+            tq.rotate_vector(pose3[:3] - pose1[:3], quat1_inv),
+            tq.qmult(quat1_inv, pose3[3:7]),
+        ],
+        axis=-1,
+    )
+
+
+def np_multiply_pose(pose1: np.ndarray, pose2: np.ndarray) -> np.ndarray:
+    """
+    Multiply two poses.
+    """
+    return np.concatenate(
+        [
+            tq.rotate_vector(pose2[:3], pose1[3:7]) + pose1[:3],
+            tq.qmult(pose1[3:7], pose2[3:7]),
+        ],
+        axis=-1,
+    )
 
 
 def np_even_sample_points_on_sphere(dim_num, delta_angle=45):

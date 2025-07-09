@@ -7,11 +7,11 @@ import numpy as np
 
 from dexonomy.qp.qp_single import ContactQP
 from dexonomy.sim import MuJoCo_OptEnv, MuJoCo_OptCfg, HandCfg
-from dexonomy.util.np_rot_util import np_array32
+from dexonomy.util.np_util import np_array32
 from dexonomy.util.file_util import load_scene_cfg
 
 
-class SynGraspException(Exception):
+class GenGraspException(Exception):
     pass
 
 
@@ -71,7 +71,7 @@ def _single_hand_refine(params):
 
     input_npy_path, configs = params[0], params[1]
     grasp_npy_path = input_npy_path.replace(configs.init_dir, configs.grasp_dir)
-    task_config = configs.task
+    op_config = configs.op
 
     grasp_data = np.load(input_npy_path, allow_pickle=True).item()
 
@@ -79,14 +79,14 @@ def _single_hand_refine(params):
         hand_cfg=HandCfg(xml_path=configs.hand.xml_path, freejoint=True),
         scene_cfg=load_scene_cfg(grasp_data["scene_path"]),
         sim_cfg=MuJoCo_OptCfg(
-            obj_margin=task_config.pregrasp.ho_target_dist,
+            obj_margin=op_config.pregrasp.ho_target_dist,
         ),
         debug_render=configs.debug_render,
         debug_viewer=configs.debug_viewer,
     )
 
     sim_env.reset_qpos(grasp_data["grasp_qpos"][0])
-    sim_env.set_obj_margin(task_config.grasp.ho_target_dist)
+    sim_env.set_obj_margin(op_config.grasp.ho_target_dist)
 
     try:
         # Generate grasp qpos
@@ -94,17 +94,17 @@ def _single_hand_refine(params):
         hand_bodyframe_contact = sim_env.get_hand_bodyframe_contact(
             hand_contact_body_names, grasp_data["hand_worldframe_contacts"]
         )
-        for ii in range(task_config.grasp.outer_iter):
+        for ii in range(op_config.grasp.outer_iter):
             total_loss = sim_env.apply_force_on_hand(
                 hand_contact_body_names,
                 hand_bodyframe_contact,
                 grasp_data["obj_worldframe_contacts"],
             )
 
-            sim_env.simulation_step(task_config.grasp.inner_iter)
+            sim_env.simulation_step(op_config.grasp.inner_iter)
 
             if ii == 0 or (
-                ii < task_config.grasp.outer_iter - 1
+                ii < op_config.grasp.outer_iter - 1
                 and np.max(prev_total_loss - total_loss) > 1e-4
             ):
                 prev_total_loss = np.copy(total_loss)
@@ -113,10 +113,10 @@ def _single_hand_refine(params):
                 prev_total_loss = np.copy(total_loss)
 
             ho_contact_lst, hh_contact_lst = sim_env.get_contact_info(
-                task_config.grasp.contact_threshold
+                op_config.grasp.contact_threshold
             )
             if not _collision_filter(
-                ho_contact_lst, hh_contact_lst, task_config.grasp.coll_filter
+                ho_contact_lst, hh_contact_lst, op_config.grasp.coll_filter
             ):
                 continue
             break
@@ -124,24 +124,24 @@ def _single_hand_refine(params):
         grasp_data["grasp_qpos"] = np_array32(sim_env.get_hand_qpos())[None]
         # Check qpos limit
         if not sim_env.check_qpos_limit():
-            raise SynGraspException("Grasp qpos out of limit")
+            raise GenGraspException("Grasp qpos out of limit")
 
         # Check necessary contact between hand and object
         if len(ho_contact_lst) == 0 or not _body_filter(
             ho_contact_lst,
             grasp_data["necessary_contact_body_names"],
-            task_config.grasp.body_filter,
+            op_config.grasp.body_filter,
         ):
-            raise SynGraspException("Grasp missing contact")
+            raise GenGraspException("Grasp missing contact")
 
         # Check collision between hand and object
         if not _collision_filter(
             ho_contact_lst,
             hh_contact_lst,
-            task_config.grasp.coll_filter,
+            op_config.grasp.coll_filter,
             skip_logging=False,
         ):
-            raise SynGraspException("Grasp collision")
+            raise GenGraspException("Grasp collision")
 
         # Check grasp quality using QP
         hand_point = np.array([c["contact_pos"] for c in ho_contact_lst])
@@ -152,10 +152,10 @@ def _single_hand_refine(params):
             hand_normal,
             grasp_data["ext_wrench"],
             grasp_data["ext_center"],
-            task_config.grasp.qp_filter,
+            op_config.grasp.qp_filter,
         )
         if contact_wrench is None:
-            raise SynGraspException("Grasp bad QP")
+            raise GenGraspException("Grasp bad QP")
 
         # Generate squeeze qpos
         grasp_data["squeeze_qpos"] = np_array32(
@@ -205,27 +205,27 @@ def _single_hand_refine(params):
         grasp_data["hand_worldframe_contacts"] = hand_worldframe_contacts
 
         # Generate pregrasp qpos list
-        if task_config.pregrasp:
+        if op_config.pregrasp:
             pregrasp_lst = []
             step_group_num = 2
-            for ii in range(task_config.pregrasp.outer_iter):
-                curr_ho_margin = task_config.pregrasp.ho_target_dist * min(
-                    (ii + 1) / task_config.pregrasp.outer_iter * 2, 1
+            for ii in range(op_config.pregrasp.outer_iter):
+                curr_ho_margin = op_config.pregrasp.ho_target_dist * min(
+                    (ii + 1) / op_config.pregrasp.outer_iter * 2, 1
                 )
                 sim_env.set_obj_margin(curr_ho_margin)
                 sim_env.keep_hand_stable()
-                sim_env.simulation_step(task_config.grasp.inner_iter)
+                sim_env.simulation_step(op_config.grasp.inner_iter)
                 pregrasp_lst.append(np.copy(sim_env.get_hand_qpos()))
                 if not sim_env.check_qpos_limit():
-                    raise SynGraspException("Pregrasp qpos out of limit")
+                    raise GenGraspException("Pregrasp qpos out of limit")
                 if (
                     ii % step_group_num == 0
-                    and curr_ho_margin >= task_config.pregrasp.ho_target_dist
+                    and curr_ho_margin >= op_config.pregrasp.ho_target_dist
                 ):
                     ho_contact_lst, hh_contact_lst = sim_env.get_contact_info()
 
                     if not _collision_filter(
-                        ho_contact_lst, hh_contact_lst, task_config.pregrasp.coll_filter
+                        ho_contact_lst, hh_contact_lst, op_config.pregrasp.coll_filter
                     ):
                         continue
                     break
@@ -234,15 +234,15 @@ def _single_hand_refine(params):
             if not _collision_filter(
                 ho_contact_lst,
                 hh_contact_lst,
-                task_config.pregrasp.coll_filter,
+                op_config.pregrasp.coll_filter,
                 skip_logging=False,
             ):
-                raise SynGraspException("Pregrasp collision")
+                raise GenGraspException("Pregrasp collision")
 
             grasp_data["pregrasp_qpos"] = np_array32(np.stack(pregrasp_lst, axis=0))[
                 ::-step_group_num
             ]
-    except SynGraspException as e:
+    except GenGraspException as e:
         sim_env.debug_postprocess(
             save_path=input_npy_path.replace(
                 configs.init_dir, configs.debug_dir
@@ -264,7 +264,7 @@ def _single_hand_refine(params):
     return input_npy_path
 
 
-def task_syngrasp(configs):
+def op_grasp(configs):
     input_path_lst = glob.glob(
         os.path.join(configs.init_dir, "**/*.npy"), recursive=True
     )

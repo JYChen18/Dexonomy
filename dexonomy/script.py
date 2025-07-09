@@ -13,13 +13,13 @@ def check_finish_init(log_path):
     if os.path.exists(log_path):
         with open(log_path, "r") as f:
             log_info = f.read()
-        if "Finish task init" in log_info:
-            logging.info(f"Task init has finished! Recorded in {log_path}")
+        if "Finish op init" in log_info:
+            logging.info(f"op init has finished! Recorded in {log_path}")
             return True
     return False
 
 
-def check_finish_syngrasp(log_path):
+def check_finish_grasp(log_path):
     if os.path.exists(log_path):
         with open(log_path, "r") as f:
             log_info = f.readlines()
@@ -32,7 +32,7 @@ def check_finish_syngrasp(log_path):
     return False
 
 
-def check_finish_test(log_path):
+def check_finish_eval(log_path):
     if os.path.exists(log_path):
         with open(log_path, "r") as f:
             log_info = f.readlines()
@@ -53,7 +53,7 @@ def run_init(
     log_id,
     obj_log_path,
 ):
-    init_cmd = f"CUDA_VISIBLE_DEVICES={device_id} python -m dexonomy.main task=init template_name={template_name} log_id={log_id} {general_config_str} {init_config_str}"
+    init_cmd = f"CUDA_VISIBLE_DEVICES={device_id} python -m dexonomy.main op=init template_name={template_name} log_id={log_id} {general_config_str} {init_config_str}"
     logging.info(init_cmd)
     count = 0
     while not check_finish_init(obj_log_path) and count < 10:
@@ -62,24 +62,26 @@ def run_init(
     return
 
 
-def run_syngrasp(general_config_str, syngrasp_config_str, hand_log_path):
-    syngrasp_cmd = f"python -m dexonomy.main task=syngrasp {general_config_str} {syngrasp_config_str}"
-    logging.info(syngrasp_cmd)
-    while not check_finish_syngrasp(hand_log_path):
-        os.system(syngrasp_cmd)
+def run_grasp(general_config_str, grasp_config_str, hand_log_path):
+    grasp_cmd = (
+        f"python -m dexonomy.main op=grasp {general_config_str} {grasp_config_str}"
+    )
+    logging.info(grasp_cmd)
+    while not check_finish_grasp(hand_log_path):
+        os.system(grasp_cmd)
     return
 
 
-def run_test(general_config_str, test_config_str, log_id, test_log_path):
-    test_cmd = f"python -m dexonomy.main task=test log_id={log_id} {general_config_str} {test_config_str}"
-    logging.info(test_cmd)
+def run_eval(general_config_str, eval_config_str, log_id, eval_log_path):
+    eval_cmd = f"python -m dexonomy.main op=eval log_id={log_id} {general_config_str} {eval_config_str}"
+    logging.info(eval_cmd)
     time.sleep(5)
-    while not check_finish_test(test_log_path):
-        os.system(test_cmd)
+    while not check_finish_eval(eval_log_path):
+        os.system(eval_cmd)
     return
 
 
-def run_straj(grasp_dir, traj_dir, hand_name, gpu_lst, test_log_path):
+def run_straj(grasp_dir, traj_dir, hand_name, gpu_lst, eval_log_path):
     straj_cmd = f"cd third_party/BODex && DISABLE_GRASP_SYN=true python example_grasp/multi_gpu.py \
     -t mogen_dexonomy \
     -c {hand_name}/dexonomy.yml \
@@ -88,13 +90,13 @@ def run_straj(grasp_dir, traj_dir, hand_name, gpu_lst, test_log_path):
     -i '{os.path.abspath(grasp_dir)}/**/*.npy' "
 
     logging.info(straj_cmd)
-    while not check_finish_test(test_log_path):
+    while not check_finish_eval(eval_log_path):
         os.system(straj_cmd)
     return
 
 
 @hydra.main(config_path="config", config_name="base", version_base=None)
-def run_together(configs):
+def main(configs):
 
     if os.path.exists(configs.succ_grasp_dir) or os.path.exists(configs.succ_traj_dir):
         logging.error(f"The exp_name {configs.exp_name} is already used!")
@@ -103,22 +105,22 @@ def run_together(configs):
     override_config = {
         "general": [],
         "init": [],
-        "syngrasp": [],
-        "test": [],
+        "grasp": [],
+        "eval": [],
     }
     for argv in sys.argv[1:]:
         if "+init." in argv:
-            override_config["init"].append(argv.replace("+init.", "task."))
-        elif "+syngrasp." in argv:
-            override_config["syngrasp"].append(argv.replace("+syngrasp.", "task."))
-        elif "+test." in argv:
-            override_config["test"].append(argv.replace("+test.", "task."))
+            override_config["init"].append(argv.replace("+init.", "op."))
+        elif "+grasp." in argv:
+            override_config["grasp"].append(argv.replace("+grasp.", "op."))
+        elif "+eval." in argv:
+            override_config["eval"].append(argv.replace("+eval.", "op."))
         else:
             if "template_name=" in argv or "log_id=" in argv:
                 continue
             override_config["general"].append(argv)
 
-    if not configs.skip_test_grasp:
+    if not configs.skip_eval_grasp:
         override_config["general_no_arm"] = []
         for v in override_config["general"]:
             if "adding_arm" not in v:
@@ -142,14 +144,14 @@ def run_together(configs):
         len(set(configs.init_gpu).intersection(set(configs.straj_gpu))) == 0
     ), f"init GPU should be different with straj GPU! init: {configs.init_gpu}; straj: {configs.straj_gpu}"
 
-    grasp_test_log_path = os.path.join(
-        os.path.dirname(configs.log_dir), "test_0", "main.log"
+    grasp_eval_log_path = os.path.join(
+        os.path.dirname(configs.log_dir), "eval_0", "main.log"
     )
-    traj_test_log_path = os.path.join(
-        os.path.dirname(configs.log_dir), "test_1", "main.log"
+    traj_eval_log_path = os.path.join(
+        os.path.dirname(configs.log_dir), "eval_1", "main.log"
     )
-    syngrasp_log_path = os.path.join(
-        os.path.dirname(configs.log_dir), "syngrasp_0", "main.log"
+    grasp_log_path = os.path.join(
+        os.path.dirname(configs.log_dir), "grasp_0", "main.log"
     )
 
     # Check dependency
@@ -185,20 +187,20 @@ def run_together(configs):
             )
         futures.append(
             executor.submit(
-                run_syngrasp,
+                run_grasp,
                 override_config["general"],
-                override_config["syngrasp"],
-                syngrasp_log_path,
+                override_config["grasp"],
+                grasp_log_path,
             )
         )
-        if not configs.skip_test_grasp:
+        if not configs.skip_eval_grasp:
             futures.append(
                 executor.submit(
-                    run_test,
+                    run_eval,
                     override_config["general_no_arm"],
-                    override_config["test"],
+                    override_config["eval"],
                     0,
-                    grasp_test_log_path,
+                    grasp_eval_log_path,
                 )
             )
         if configs.adding_arm:
@@ -207,22 +209,22 @@ def run_together(configs):
                     run_straj,
                     (
                         configs.grasp_dir
-                        if configs.skip_test_grasp
+                        if configs.skip_eval_grasp
                         else configs.succ_grasp_dir
                     ),
                     configs.traj_dir,
                     configs.hand_name,
                     configs.straj_gpu,
-                    traj_test_log_path,
+                    traj_eval_log_path,
                 )
             )
             futures.append(
                 executor.submit(
-                    run_test,
+                    run_eval,
                     override_config["general"],
-                    override_config["test"],
+                    override_config["eval"],
                     1,
-                    traj_test_log_path,
+                    traj_eval_log_path,
                 )
             )
 
@@ -234,4 +236,4 @@ def run_together(configs):
 
 
 if __name__ == "__main__":
-    run_together()
+    main()

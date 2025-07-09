@@ -8,13 +8,13 @@ import numpy as np
 from transforms3d import quaternions as tq
 
 from dexonomy.sim import MuJoCo_VisEnv, HandCfg, MuJoCo_TestCfg, MuJoCo_OptCfg
-from dexonomy.util.usd_helper import UsdHelper, Material
+from dexonomy.util.usd_util import UsdHelper, Material
 from dexonomy.util.file_util import get_template_name_lst, load_scene_cfg
 
 
 def read_npy(params):
     npy_path, config = params[0], params[1]
-    task_config = config.task
+    op_config = config.op
 
     data = np.load(npy_path, allow_pickle=True).item()
 
@@ -23,18 +23,18 @@ def read_npy(params):
             hand_cfg=HandCfg(xml_path=config.hand.hand_on_arm.xml_path),
             scene_cfg=load_scene_cfg(data["scene_path"]),
             sim_cfg=MuJoCo_TestCfg(),
-            vis_mesh_mode=task_config.hand.mode,
+            vis_mesh_mode=op_config.hand.mode,
         )
     else:
         kin = MuJoCo_VisEnv(
             hand_cfg=HandCfg(xml_path=config.hand.xml_path, freejoint=True),
             scene_cfg=load_scene_cfg(data["scene_path"]),
             sim_cfg=MuJoCo_OptCfg(),
-            vis_mesh_mode=task_config.hand.mode,
+            vis_mesh_mode=op_config.hand.mode,
         )
     init_body_name_lst, init_body_mesh_lst = kin.get_init_body_meshes()
     body_pose_lst = []
-    for qpos_name in task_config.qpos_type:
+    for qpos_name in op_config.qpos_type:
         for qpos_id in range(data[f"{qpos_name}_qpos"].shape[0]):
             xmat, xpos = kin.forward_kinematics(data[f"{qpos_name}_qpos"][qpos_id])
             body_pose = []
@@ -64,29 +64,29 @@ def read_npy_safe(params):
         return None
 
 
-def task_vusd(configs):
+def op_vusd(configs):
     if not os.path.exists(configs.init_dir):
         tmp_lst = get_template_name_lst(None, configs.grasp_dir)
     else:
         tmp_lst = get_template_name_lst(None, configs.init_template_dir)
 
     for temp_name in tmp_lst:
-        task_config = configs.task
-        if task_config.data_type == "init":
+        op_config = configs.op
+        if op_config.data_type == "init":
             data_folder, check_folder = configs.init_dir, configs.grasp_dir
-        elif task_config.data_type == "grasp":
+        elif op_config.data_type == "grasp":
             data_folder, check_folder = configs.grasp_dir, configs.succ_grasp_dir
             if not os.path.exists(check_folder):
                 check_folder = configs.succ_traj_dir
-        elif task_config.data_type == "succ_grasp":
+        elif op_config.data_type == "succ_grasp":
             data_folder, check_folder = configs.succ_grasp_dir, None
-        elif task_config.data_type == "succ_traj":
+        elif op_config.data_type == "succ_traj":
             data_folder, check_folder = configs.succ_traj_dir, None
-        elif task_config.data_type == "new_template":
+        elif op_config.data_type == "new_template":
             data_folder, check_folder = configs.new_template_dir, None
         else:
             raise NotImplementedError(
-                f"Valid choices: 'init', 'grasp', 'succ_grasp', 'succ_traj', 'new_template'. Current: '{task_config.data_type}' "
+                f"Valid choices: 'init', 'grasp', 'succ_grasp', 'succ_traj', 'new_template'. Current: '{op_config.data_type}' "
             )
         input_path_lst = glob(
             os.path.join(data_folder, temp_name, "**/*.npy"), recursive=True
@@ -94,7 +94,7 @@ def task_vusd(configs):
         if configs.debug_name is not None:
             input_path_lst = [p for p in input_path_lst if configs.debug_name in p]
 
-        if check_folder is not None and task_config.check_success is not None:
+        if check_folder is not None and op_config.check_success is not None:
             check_path_lst = glob(
                 os.path.join(check_folder, temp_name, "**/*.npy"), recursive=True
             )
@@ -104,22 +104,20 @@ def task_vusd(configs):
                 p.replace(check_folder, data_folder) for p in check_path_lst
             ]
 
-            if task_config.check_success:
+            if op_config.check_success:
                 input_path_lst = list(set(input_path_lst).difference(check_path_lst))
-            elif not task_config.check_success:
+            elif not op_config.check_success:
                 input_path_lst = list(set(input_path_lst).intersection(check_path_lst))
 
         if len(input_path_lst) == 0:
             continue
         logging.info(
-            f"Find {len(input_path_lst)} in {data_folder}. Debug name: {configs.debug_name}. Check success: {task_config.check_success}"
+            f"Find {len(input_path_lst)} in {data_folder}. Debug name: {configs.debug_name}. Check success: {op_config.check_success}"
         )
 
-        if configs.task.max_num > 0 and len(input_path_lst) > configs.task.max_num:
-            input_path_lst = np.random.permutation(input_path_lst)[
-                : configs.task.max_num
-            ]
-        logging.info(f"Use {min(len(input_path_lst), configs.task.max_num)}")
+        if configs.op.max_num > 0 and len(input_path_lst) > configs.op.max_num:
+            input_path_lst = np.random.permutation(input_path_lst)[: configs.op.max_num]
+        logging.info(f"Use {min(len(input_path_lst), configs.op.max_num)}")
 
         param_lst = [(i, configs) for i in input_path_lst]
         with multiprocessing.Pool(processes=configs.n_worker) as pool:

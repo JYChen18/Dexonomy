@@ -16,11 +16,11 @@ def _single_visd(params):
         params[1],
         params[2],
     )
-    task_config = configs.task
+    op_config = configs.op
 
     out_path = os.path.join(
         configs.vis_3d_dir,
-        task_config.data_type,
+        op_config.data_type,
         os.path.relpath(data_path, data_folder),
     )
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
@@ -30,22 +30,22 @@ def _single_visd(params):
         hand_cfg=HandCfg(xml_path=configs.hand.xml_path, freejoint=True),
         scene_cfg=(
             load_scene_cfg(grasp_data["scene_path"])
-            if task_config.data_type != "init_template"
+            if op_config.data_type != "init_template"
             else None
         ),
         sim_cfg=MuJoCo_OptCfg(),
-        vis_mesh_mode=task_config.hand.mode,
+        vis_mesh_mode=op_config.hand.mode,
     )
 
     xmat, xpos = kin.forward_kinematics(grasp_data["grasp_qpos"][0])
     hand_mesh = kin.get_posed_meshes(xmat, xpos, vis_prefix=[kin.sim_cfg.hand_prefix])
 
     # Object
-    if task_config.data_type != "init_template":
+    if op_config.data_type != "init_template":
         obj_tm = kin.get_posed_meshes(
             xmat, xpos, vis_prefix=[kin.sim_cfg.obj_prefix, kin.sim_cfg.plane_prefix]
         )
-        if task_config.object.contact:
+        if op_config.object.contact:
             point_mesh, arrow_mesh = get_arrow_mesh(
                 grasp_data["obj_worldframe_contacts"][:, :3],
                 grasp_data["obj_worldframe_contacts"][:, 3:],
@@ -53,14 +53,14 @@ def _single_visd(params):
             obj_tm = trimesh.util.concatenate([point_mesh, arrow_mesh])
         obj_tm.export(out_path.replace(".npy", "_obj.obj"))
 
-    if task_config.hand.contact:
+    if op_config.hand.contact:
         point_mesh, arrow_mesh = get_arrow_mesh(
             grasp_data["hand_worldframe_contacts"][:, :3],
             grasp_data["hand_worldframe_contacts"][:, 3:],
         )
         hand_mesh = trimesh.util.concatenate([hand_mesh, point_mesh, arrow_mesh])
 
-    if task_config.hand.skeleton:
+    if op_config.hand.skeleton:
         hand_skeleton_dict = load_yaml(configs.hand_skeleton_path)
         hand_skeleton = []
         hand_sk_body_id = []
@@ -86,35 +86,35 @@ def _single_visd(params):
     return
 
 
-def task_v3d(configs):
-    task_config = configs.task
-    if task_config.data_type == "init_template":
+def op_v3d(configs):
+    op_config = configs.op
+    if op_config.data_type == "init_template":
         data_folder = configs.init_template_dir
         input_path_lst = glob(os.path.join(data_folder, "**.npy"))
         if configs.debug_name is not None:
             input_path_lst = [p for p in input_path_lst if configs.debug_name in p]
     else:
-        if task_config.data_type == "init":
+        if op_config.data_type == "init":
             data_folder, check_folder = configs.init_dir, configs.grasp_dir
-        elif task_config.data_type == "grasp":
+        elif op_config.data_type == "grasp":
             data_folder, check_folder = configs.grasp_dir, configs.succ_grasp_dir
             if not os.path.exists(check_folder):
                 check_folder = configs.succ_traj_dir
-        elif task_config.data_type == "succ_grasp":
+        elif op_config.data_type == "succ_grasp":
             data_folder, check_folder = configs.succ_grasp_dir, None
-        elif task_config.data_type == "succ_traj":
+        elif op_config.data_type == "succ_traj":
             data_folder, check_folder = configs.succ_traj_dir, None
-        elif task_config.data_type == "new_template":
+        elif op_config.data_type == "new_template":
             data_folder, check_folder = configs.new_template_dir, None
         else:
             raise NotImplementedError(
-                f"Valid choices: 'init', 'grasp', 'succ_grasp', 'succ_traj', 'init_template', 'new_template'. Current: '{task_config.data_type}' "
+                f"Valid choices: 'init', 'grasp', 'succ_grasp', 'succ_traj', 'init_template', 'new_template'. Current: '{op_config.data_type}' "
             )
         input_path_lst = glob(os.path.join(data_folder, "**/*.npy"), recursive=True)
         if configs.debug_name is not None:
             input_path_lst = [p for p in input_path_lst if configs.debug_name in p]
 
-        if check_folder is not None and task_config.check_success is not None:
+        if check_folder is not None and op_config.check_success is not None:
             check_path_lst = glob(
                 os.path.join(check_folder, "**/*.npy"), recursive=True
             )
@@ -124,21 +124,21 @@ def task_v3d(configs):
                 p.replace(check_folder, data_folder) for p in check_path_lst
             ]
 
-            if task_config.check_success:
+            if op_config.check_success:
                 input_path_lst = list(set(input_path_lst).difference(check_path_lst))
-            elif not task_config.check_success:
+            elif not op_config.check_success:
                 input_path_lst = list(set(input_path_lst).intersection(check_path_lst))
-    if configs.task.max_num > 0 and len(input_path_lst) > configs.task.max_num:
-        input_path_lst = np.random.permutation(input_path_lst)[: configs.task.max_num]
+    if configs.op.max_num > 0 and len(input_path_lst) > configs.op.max_num:
+        input_path_lst = np.random.permutation(input_path_lst)[: configs.op.max_num]
     logging.info(
-        f"Find {len(input_path_lst)} in {data_folder}. Debug name: {configs.debug_name}. Check success: {task_config.check_success}"
+        f"Find {len(input_path_lst)} in {data_folder}. Debug name: {configs.debug_name}. Check success: {op_config.check_success}"
     )
 
     kin = MuJoCo_VisEnv(
         hand_cfg=HandCfg(xml_path=configs.hand.xml_path, freejoint=True),
-        vis_mesh_mode=task_config.hand.mode,
+        vis_mesh_mode=op_config.hand.mode,
     )
-    if task_config.hand.init_body:
+    if op_config.hand.init_body:
         save_folder = os.path.join(configs.vis_3d_dir, "hand_init_body_mesh")
         os.makedirs(save_folder, exist_ok=True)
         init_mesh_name, init_mesh_lst = kin.get_init_body_meshes()

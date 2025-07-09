@@ -16,7 +16,7 @@ except ImportError:
         + " NOTE: Do not install this if using with ISAAC SIM."
     )
 
-from dexonomy.util.np_rot_util import np_even_sample_points_on_sphere
+from dexonomy.util.np_util import np_even_sample_points_on_sphere
 
 
 def create_view_matrix(position, target):

@@ -10,7 +10,7 @@ import numpy as np
 import mujoco
 import mujoco.viewer
 
-from dexonomy.util.np_rot_util import (
+from dexonomy.util.np_util import (
     np_interp_slide,
     np_interp_qpos,
     np_array32,
@@ -454,31 +454,29 @@ class MuJoCo_BaseEnv:
         return
 
     def control_with_interp(
-        self, qpos_lst, ctype_lst, extdir_lst, interp_lst, step_inner=10
+        self, qpos_lst, ctype_lst, extdir_lst, step=5, substep=5
     ) -> np.ndarray:
         real_qpos_lst = []
         for i in range(len(qpos_lst) - 1):
             if len(qpos_lst[i]) == len(qpos_lst[i + 1]):
-                interp_qpos_lst = np_interp_qpos(
-                    qpos_lst[i], qpos_lst[i + 1], interp_lst[i]
-                )
+                interp_qpos_lst = np_interp_qpos(qpos_lst[i], qpos_lst[i + 1], step)
                 if ctype_lst[i] == "ee_pose":
                     interp_qpos_lst[:, :7] = np_interp_slide(
-                        qpos_lst[i][:7], qpos_lst[i + 1][:7], interp_lst[i]
+                        qpos_lst[i][:7], qpos_lst[i + 1][:7], step
                     )
             else:
-                interp_qpos_lst = [qpos_lst[i + 1]] * interp_lst[i]
+                interp_qpos_lst = [qpos_lst[i + 1]] * step
             if extdir_lst[i] is not None:
                 self.set_interest_object_extdir(extdir_lst[i])
-            for j in range(interp_lst[i]):
+            for j in range(step):
                 self.set_ctrl(interp_qpos_lst[j], ctype_lst[i])
-                self.simulation_step(step_inner)
+                self.simulation_step(substep)
             real_qpos_lst.append(self.data.qpos.copy())
         return np.stack(real_qpos_lst, axis=0)
 
-    def simulation_step(self, step_inner) -> None:
+    def simulation_step(self, substep) -> None:
         mujoco.mj_forward(self.model, self.data)
-        for _ in range(step_inner):
+        for _ in range(substep):
             mujoco.mj_step(self.model, self.data)
 
         if self.debug_render is not None:
@@ -666,7 +664,6 @@ class MuJoCo_TestEnv(MuJoCo_BaseEnv):
         qpos_lst,
         ctype_lst,
         extdir_lst,
-        interp_lst,
         target_obj_pose,
         trans_thre,
         angle_thre,
@@ -677,10 +674,10 @@ class MuJoCo_TestEnv(MuJoCo_BaseEnv):
 
         for extforce_dir in external_force_direction:
             self.reset_qpos(qpos_lst[0])
-            self.control_with_interp(qpos_lst, ctype_lst, extdir_lst, interp_lst)
+            self.control_with_interp(qpos_lst, ctype_lst, extdir_lst)
             self.set_interest_object_extdir(extforce_dir)
             for _ in range(10):
-                self.simulation_step(step_inner=50)
+                self.simulation_step(substep=50)
                 latter_obj_pose = self.get_interest_object_pose()
                 delta_pos, delta_angle = np_get_delta_pose(
                     target_obj_pose, latter_obj_pose
@@ -697,16 +694,14 @@ class MuJoCo_TestEnv(MuJoCo_BaseEnv):
         qpos_lst,
         ctype_lst,
         extdir_lst,
-        interp_lst,
         target_obj_pose,
         trans_thre,
         angle_thre,
     ) -> tuple[bool, np.ndarray]:
         self.reset_qpos(qpos_lst[0])
-        real_qpos_lst = self.control_with_interp(
-            qpos_lst, ctype_lst, extdir_lst, interp_lst
-        )
-        self.simulation_step(step_inner=50)
+        real_qpos_lst = self.control_with_interp(qpos_lst, ctype_lst, extdir_lst)
+        debug_obj_pose = self.get_interest_object_pose()
+        self.simulation_step(substep=50)
         latter_obj_pose = self.get_interest_object_pose()
         delta_pos, delta_angle = np_get_delta_pose(target_obj_pose, latter_obj_pose)
         succ_flag = (delta_pos < trans_thre) & (delta_angle < angle_thre)

@@ -1,4 +1,4 @@
-from .mujoco_util import (
+from .mujoco_env import (
     MuJoCo_OptEnv,
     MuJoCo_TestEnv,
     MuJoCo_VisEnv,

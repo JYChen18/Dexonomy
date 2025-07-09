@@ -24,3 +24,7 @@ dependencies = [
 
 [tool.setuptools]
 packages = ["dexonomy"]
+
+[project.scripts]
+dexon = "dexonomy.main:main"     # Single-operation runner
+dexrun = "dexonomy.script:main"  # Full pipeline runner

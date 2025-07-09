@@ -1,4 +1,3 @@
-import os
 import sys
 import random
 import logging
@@ -9,7 +8,7 @@ from omegaconf import DictConfig
 import numpy as np
 import torch
 
-from dexonomy.task import *
+from dexonomy.op import *
 
 seed = 12
 np.random.seed(seed)
@@ -20,7 +19,7 @@ random.seed(seed)
 @hydra.main(config_path="config", config_name="base", version_base=None)
 def main(cfg: DictConfig):
     try:
-        eval(f"task_{cfg.task_name}")(cfg)
+        eval(f"op_{cfg.op_name}")(cfg)
     except Exception as e:
         error_traceback = traceback.format_exc()
         logging.info(f"{error_traceback}")

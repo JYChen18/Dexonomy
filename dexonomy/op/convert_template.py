@@ -8,7 +8,7 @@ import numpy as np
 
 from dexonomy.util.file_util import load_yaml
 from dexonomy.sim import MuJoCo_VisEnv, HandCfg
-from dexonomy.util.np_rot_util import (
+from dexonomy.util.np_util import (
     np_transform_points,
     np_array32,
     np_inv_transform_points,
@@ -135,7 +135,7 @@ def _single_anno2temp(params):
     return
 
 
-def task_templ(configs):
+def op_tmpl(configs):
 
     input_path_lst = glob(os.path.join(configs.raw_anno_dir, "**.yaml"))
     if configs.debug_name is not None:

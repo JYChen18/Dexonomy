@@ -4,7 +4,7 @@ import numpy as np
 from qpsolvers import solve_qp
 import scipy
 
-from dexonomy.util.np_rot_util import np_normalize_vector, np_normal_to_rot
+from dexonomy.util.np_util import np_normalize_vector, np_normal_to_rot
 
 
 class ContactQP:

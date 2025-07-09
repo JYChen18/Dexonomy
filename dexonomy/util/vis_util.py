@@ -1,7 +1,7 @@
 import trimesh
 import numpy as np
 
-from dexonomy.util.np_rot_util import np_normalize_vector, np_normal_to_rot
+from dexonomy.util.np_util import np_normalize_vector, np_normal_to_rot
 
 
 def get_point_mesh(point_lst):
