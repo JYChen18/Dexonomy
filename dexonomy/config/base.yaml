@@ -1,40 +1,47 @@
-exp_name: "debug"
+# General configurations
+n_worker: 16    
+skip_done: True   # skip if the result already exists, used for op=init, grasp and eval
+skip_traj: True   # skip trajectory generation and evaluation
+skip_grasp_eval: False  # skip grasp evaluation
+
+# GPU configurations
+init_gpu: [1,2,3] 
+traj_gpu: [4,5,6]  # only used when skip_traj is False
+
+# Debug configurations
+debug_view: False  # requiring a GUI
+debug_render: False  # support headless rendering
+debug_name: ""
+
+# Template configurations
+tmpl_name: null  # support multiple templates, e.g. [t1, t2, ...]
+tmpl_upd_mode: hybrid   # Choices: orig, real, hybrid, disabled
+tmpl_max_evo: 2  # max evolution number for restricting template update
+tmpl_max_buf: 1024  # max buffer size for template library
+
+# Object configurations
+obj_mass: 0.1 # unit: kg
+
+# Path configurations
+exp_name: debug
 asset_root: assets
 save_root: output
 save_dir: ${save_root}/${exp_name}_${hand_name}
-skip: True
-n_worker: 16    
-
-init_gpu: [1,2,3]
-adding_arm: False
-straj_gpu: [4,5,6]  # only used when adding_arm is True
-skip_eval_grasp: False  
-
-debug_viewer: False
-debug_render: False
-debug_name: ""
-
-template_name: 
-update_template: "nearest"   # Choices: False, "body", "nearest", "arbi"
-max_template_evolution: 2
-max_template_buffer: 1024
-
-obj_mass: 0.1 # unit: kg
 
 # Path for hand annotation
 raw_anno_dir: ${asset_root}/hand/${hand_name}/raw_anno
-init_template_dir: ${asset_root}/hand/${hand_name}/init_template
-hand_skeleton_path: ${asset_root}/hand/${hand_name}/collision_skeleton.yaml
-hand_keypoint_path: ${asset_root}/hand/${hand_name}/anno_keypoint.yaml
-hand_body_group_path: ${asset_root}/hand/${hand_name}/body_group.yaml
+init_tmpl_dir: ${asset_root}/hand/${hand_name}/init_tmpl
+hand_skt_path: ${asset_root}/hand/${hand_name}/skeleton.yaml
+hand_kp_path: ${asset_root}/hand/${hand_name}/keypoint.yaml
+hand_bgroup_path: ${asset_root}/hand/${hand_name}/body_group.yaml
 
 # Path for saving results
-init_dir: ${save_dir}/initialization
+init_dir: ${save_dir}/init_data
 grasp_dir: ${save_dir}/grasp_data
 succ_grasp_dir: ${save_dir}/succ_grasp
 traj_dir: ${save_dir}/traj_data
 succ_traj_dir: ${save_dir}/succ_traj
-new_template_dir: ${save_dir}/new_template
+new_tmpl_dir: ${save_dir}/new_tmpl
 vis_3d_dir: ${save_dir}/vis_3d
 vis_usd_dir: ${save_dir}/vis_usd
 debug_dir: ${save_dir}/debug

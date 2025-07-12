@@ -1,16 +1,16 @@
 # Annotation Tutorial
-This tutorial guides you through the process of adding a new hand model and annotating the necessary components—particularly for the **initial grasp template** and **hand skeleton**.
+This tutorial guides you through the process of adding a customized hand model and annotating the necessary components—particularly for the **initial grasp template** and **hand skeleton**.
 
 
 ## Required Files
 | ID | File Path | Description |
 |--|------|-------------|
-|1 | dexonomy/config/hand/new_hand.yaml | Basic configuration |
-|2 | assets/hand/new_hand/right.xml | Hand XML model |
-|3 | assets/hand/new_hand/body_group.yaml | Hand body groups for contact check in [syn_hand_refine.py](https://github.com/JYChen18/Dexonomy/blob/main/dexonomy/task/syn_hand_refine.py#L34) |
-|4 | assets/hand/new_hand/raw_anno/${TEMPLATE_NAME}.yaml | Annotated grasp template including hand qpos and hand contacts |
-|5 | assets/hand/new_hand/anno_keypoint.yaml | Optional reusable keypoints in bodyframe |
-|6 | assets/hand/new_hand/collision_skeleton.yaml | Skeleton config for collision detection in [init_object_align.py](https://github.com/JYChen18/Dexonomy/blob/main/dexonomy/task/init_object_align.py) |
+|1 | dexonomy/config/hand/custom.yaml | Basic configuration |
+|2 | assets/hand/custom/right.xml | Hand XML model |
+|3 | assets/hand/custom/body_group.yaml | Hand body groups for contact check in [gen_grasp.py](https://github.com/JYChen18/Dexonomy/blob/main/dexonomy/op/gen_grasp.py#L38) |
+|4 | assets/hand/custom/raw_anno/${TEMPLATE_NAME}.yaml | Annotated grasp template including hand qpos and hand contacts |
+|5 | assets/hand/custom/anno_keypoint.yaml | Optional reusable keypoints in bodyframe |
+|6 | assets/hand/custom/collision_skeleton.yaml | Skeleton config for collision detection in [gen_init.py](https://github.com/JYChen18/Dexonomy/blob/main/dexonomy/op/gen_init.py) |
 
 ---
 
@@ -66,8 +66,8 @@ qpos: [-0.017, 0.47, 0.74, 0.74, -0.02, 0.49, 0.74, 0.74, 0.03, 0.47, 0.74, 0.74
 ```
 4. To generate the 3D mesh and visualize it:
 ```bash
-python -m dexonomy.main hand=new_hand task=templ
-python -m dexonomy.main hand=new_hand task=v3d task.data_type=init_template
+dexrun hand=custom op=tmpl
+dexrun hand=custom op=v3d task.data=init_tmpl
 ```
 
 ### Annotate contact points and normals in [CloudCompare](https://www.danielgm.net/cc/)
@@ -93,7 +93,7 @@ contact:
 
 1. Export all hand body meshes:
 ```bash
-python -m dexonomy.main hand=new_hand task=v3d task.data_type=init_template task.hand.init_body=True
+dexrun hand=custom op=v3d task.data=init_tmpl task.hand.init_body=True
 ```
 2. Load one mesh into CloudCompare and annotate keypoints as in *Option A*.
 3. Copy them into `anno_keypoint.yaml` like:
@@ -111,8 +111,8 @@ contact:
 
 To visualize the annotated contacts:
 ```bash
-python -m dexonomy.main hand=new_hand task=templ
-python -m dexonomy.main hand=new_hand task=v3d task.data_type=init_template task.hand.contact=True
+dexrun hand=custom op=tmpl
+dexrun hand=custom op=v3d task.data=init_tmpl task.hand.contact=True
 ```
 `anno2temp` will also automatically check for mismatches between annotated contact points and body names — a common issue in practice.
 
@@ -142,5 +142,5 @@ rh_palm: [
 
 To visualize the annotated hand skeleton:
 ```bash
-python -m dexonomy.main hand=new_hand task=v3d task.data_type=init_template task.hand.skeleton=True
+dexrun hand=custom op=v3d task.data=init_tmpl task.hand.skeleton=True
 ```

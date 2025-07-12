@@ -12,7 +12,7 @@ contact:
   rh_thdistal: 0
   rh_rfproximal: [-0.003926,-0.025382,0.136959,0.726120,0.041208,0.686332]
   
-necessary_contact_body_names: [
+required_cbody: [
     [rh_thdistal],
     [rh_ffmiddle],
     [rh_mfdistal,rh_mfmiddle, rh_mfproximal, rh_rfproximal],

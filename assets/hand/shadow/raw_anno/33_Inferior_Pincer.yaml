@@ -6,7 +6,7 @@ contact:
     rh_thdistal: [0.040391,-0.084847,0.107192,-0.030778,0.149329,0.988308]
     rh_thmiddle: [0.036644,-0.058187,0.098336,0.079763,0.155955,0.984538]
 
-necessary_contact_body_names: [
+required_cbody: [
     [rh_ffdistal], 
     [rh_ffmiddle],
     [rh_thdistal], 

@@ -1,7 +1,7 @@
-import numpy as np
 from abc import ABC, abstractmethod
-from typing import Dict, Any, List, Optional, Union
+from typing import Any
 from dataclasses import dataclass
+import numpy as np
 
 from dexonomy.util.np_util import (
     np_get_relative_pose,
@@ -50,7 +50,7 @@ class KeyframeCfg(MoveCfg):
     """Configuration for keyframe pose tasks."""
 
     pose: np.ndarray  # Pose of the keyframe, shape=(N, 7)
-    # interp: List[str] | None = None  # TODO: Add different interpolation type between each two keyframes, shape=(N-1,)
+    # interp: list[str] | None = None  # TODO: Add different interpolation type between each two keyframes, shape=(N-1,)
 
 
 class TrajectoryPlanner(ABC):
@@ -58,7 +58,7 @@ class TrajectoryPlanner(ABC):
 
     def __init__(
         self,
-        move_cfg: Union[ForceClosureCfg, SlideCfg, HingeCfg, KeyframeCfg],
+        move_cfg: ForceClosureCfg | SlideCfg | HingeCfg | KeyframeCfg,
         move_step: int = 10,
     ):
         """
@@ -68,9 +68,9 @@ class TrajectoryPlanner(ABC):
             move_cfg: Movement configuration dataclass
             move_step: Number of steps for movement interpolation
         """
-        self.qpos_lst = []
-        self.extdir_lst = []
-        self.ctype_lst = []
+        self.ctrl_qpos = []
+        self.ext_fdir = []
+        self.ctrl_type = []
         self.move_cfg = move_cfg
         self.move_step = move_step
 
@@ -80,15 +80,15 @@ class TrajectoryPlanner(ABC):
         pregrasp_qpos: np.ndarray,
         grasp_qpos: np.ndarray,
         squeeze_qpos: np.ndarray,
-        approach_qpos: Optional[np.ndarray],
-    ) -> tuple[List[np.ndarray], List[str], List[np.ndarray], np.ndarray]:
+        approach_qpos: np.ndarray | None,
+    ) -> tuple[list[np.ndarray], list[str], list[np.ndarray], np.ndarray]:
         """
         Plan the trajectory for the specific task type.
 
         Returns:
-            qpos_lst: List of qpos
-            ctype_lst: List of control type (ee_pose, joint_angle)
-            extdir_lst: List of external direction
+            ctrl_qpos: list of qpos
+            ctrl_type: list of control type (ee_pose, joint_angle)
+            ext_fdir: list of external direction
             target_obj_pose: Target object pose after movement
         """
         self._add_approach_phase(approach_qpos)
@@ -101,8 +101,8 @@ class TrajectoryPlanner(ABC):
             move_pose = self._interp_move_traj(squeeze_qpos[0, :7])
             move_qpos = np.repeat(squeeze_qpos, len(move_pose), axis=0)
             move_qpos[:, :7] = move_pose
-            self.qpos_lst.extend(list(move_qpos))
-            self.ctype_lst.extend(["ee_pose"] * move_qpos.shape[0])
+            self.ctrl_qpos.extend(list(move_qpos))
+            self.ctrl_type.extend(["ee_pose"] * move_qpos.shape[0])
 
             # Generate object movement trajectory
             move_obj_lst = self._interp_move_traj(init_obj_pose)
@@ -112,53 +112,48 @@ class TrajectoryPlanner(ABC):
                 target_obj_pose = init_obj_pose
 
             # Add task-specific external directions
-            self.extdir_lst.extend(self._get_external_directions(move_obj_lst))
+            self.ext_fdir.extend(self._get_external_directions(move_obj_lst))
 
-            # Fill None values in extdir_lst
-            self._fill_none_extdir()
+            # Fill None values in ext_fdir
+            self._fill_none_ext_fdir()
         else:
             # No movement needed (e.g., ForceClosure)
             target_obj_pose = init_obj_pose
 
-        return (
-            self.qpos_lst,
-            self.ctype_lst,
-            self.extdir_lst,
-            target_obj_pose,
-        )
+        return self.ctrl_qpos, self.ctrl_type, self.ext_fdir, target_obj_pose
 
-    def _add_approach_phase(self, approach_qpos: Optional[np.ndarray]):
+    def _add_approach_phase(self, approach_qpos: np.ndarray | None):
         """Add approach phase to trajectory if provided."""
         if approach_qpos is not None:
-            self.qpos_lst.extend(list(approach_qpos))
-            approach_num = approach_qpos.shape[0] - 1
-            self.extdir_lst.extend([None] * approach_num)
-            self.ctype_lst.extend(["joint_angle"] * approach_num)
+            self.ctrl_qpos.extend(list(approach_qpos))
+            n_approach = approach_qpos.shape[0] - 1
+            self.ext_fdir.extend([None] * n_approach)
+            self.ctrl_type.extend(["joint_angle"] * n_approach)
 
     def _add_pregrasp_phase(self, pregrasp_qpos: np.ndarray):
         """Add pregrasp phase to trajectory."""
-        self.extdir_lst.extend([None] * pregrasp_qpos.shape[0])
-        self.ctype_lst.extend(["ee_pose"] * pregrasp_qpos.shape[0])
-        self.qpos_lst.extend(list(pregrasp_qpos))
+        self.ext_fdir.extend([None] * pregrasp_qpos.shape[0])
+        self.ctrl_type.extend(["ee_pose"] * pregrasp_qpos.shape[0])
+        self.ctrl_qpos.extend(list(pregrasp_qpos))
 
     def _add_grasp_phases(self, grasp_qpos: np.ndarray, squeeze_qpos: np.ndarray):
         """Add grasp and squeeze phases to trajectory."""
         # Grasp phase
-        self.extdir_lst.extend([None])
-        self.ctype_lst.extend(["ee_pose"])
-        self.qpos_lst.extend(list(grasp_qpos))
+        self.ext_fdir.extend([None])
+        self.ctrl_type.extend(["ee_pose"])
+        self.ctrl_qpos.extend(list(grasp_qpos))
 
         # Squeeze phase
-        self.extdir_lst.extend([None])
-        self.ctype_lst.extend(["ee_pose"])
-        self.qpos_lst.extend(list(squeeze_qpos))
+        self.ext_fdir.extend([None])
+        self.ctrl_type.extend(["ee_pose"])
+        self.ctrl_qpos.extend(list(squeeze_qpos))
 
-    def _fill_none_extdir(self):
-        """Fill None values in extdir_lst with the next non-None value."""
-        i = len(self.extdir_lst) - 1
-        for extdir in reversed(self.extdir_lst):
-            if extdir is None:
-                self.extdir_lst[i] = self.extdir_lst[i + 1]
+    def _fill_none_ext_fdir(self):
+        """Fill None values in ext_fdir with the next non-None value."""
+        i = len(self.ext_fdir) - 1
+        for ext_fdir in reversed(self.ext_fdir):
+            if ext_fdir is None:
+                self.ext_fdir[i] = self.ext_fdir[i + 1]
             i -= 1
 
     def _needs_movement(self) -> bool:
@@ -171,7 +166,7 @@ class TrajectoryPlanner(ABC):
         pass
 
     @abstractmethod
-    def _get_external_directions(self, move_obj_lst: np.ndarray) -> List[Any]:
+    def _get_external_directions(self, move_obj_lst: np.ndarray) -> list[Any]:
         """Get external directions for the specific task type."""
         pass
 
@@ -186,7 +181,7 @@ class ForceClosurePlanner(TrajectoryPlanner):
         """No movement for force closure."""
         return np.array([])
 
-    def _get_external_directions(self, move_obj_lst: np.ndarray) -> List[Any]:
+    def _get_external_directions(self, move_obj_lst: np.ndarray) -> list[Any]:
         return []
 
 
@@ -201,7 +196,7 @@ class SlidePlanner(TrajectoryPlanner):
         target_pose[:3] += self.move_cfg.axis * self.move_cfg.distance
         return np_interp_slide(init_pose, target_pose, self.move_step)
 
-    def _get_external_directions(self, move_obj_lst: np.ndarray) -> List[Any]:
+    def _get_external_directions(self, move_obj_lst: np.ndarray) -> list[Any]:
         return [-self.move_cfg.axis] * len(move_obj_lst)
 
 
@@ -220,7 +215,7 @@ class HingePlanner(TrajectoryPlanner):
             step=self.move_step,
         )
 
-    def _get_external_directions(self, move_obj_lst: np.ndarray) -> List[Any]:
+    def _get_external_directions(self, move_obj_lst: np.ndarray) -> list[Any]:
         return [
             -np.cross(
                 self.move_cfg.axis, np_normalize_vector(p[:3] - self.move_cfg.pos)
@@ -245,7 +240,7 @@ class KeyframePlanner(TrajectoryPlanner):
             prev_hand_pose = hand_pose
         return np.concatenate(pose_lst, axis=0)
 
-    def _get_external_directions(self, move_obj_lst: np.ndarray) -> List[Any]:
+    def _get_external_directions(self, move_obj_lst: np.ndarray) -> list[Any]:
         return [np.array([0, 0, -1.0])] * len(move_obj_lst)
 
 
@@ -264,7 +259,7 @@ TASK_TYPE_TO_PLANNER = {
 }
 
 
-def get_planner(move_cfg: Dict[str, Any], move_step: int = 10) -> TrajectoryPlanner:
+def get_planner(move_cfg: dict[str, Any], move_step: int = 10) -> TrajectoryPlanner:
     """Get the appropriate planner for the given move configuration."""
     task_type = move_cfg["type"]
     move_cfg["part_name"] = move_cfg.get("part_name", None)

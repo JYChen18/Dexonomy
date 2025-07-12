@@ -4,19 +4,33 @@ import numpy as np
 from dexonomy.util.np_util import np_normalize_vector, np_normal_to_rot
 
 
-def get_point_mesh(point_lst):
+def get_point_mesh(points: np.ndarray) -> trimesh.Trimesh:
+    """
+    Args:
+        points: (N, 3) points
+    Returns:
+        point_mesh: point mesh
+    """
     point_mesh_lst = []
-    for i in range(len(point_lst)):
+    for i in range(points.shape[0]):
         tm_sph = trimesh.creation.icosphere(radius=0.003)
-        tm_sph.apply_translation(point_lst[i])
+        tm_sph.apply_translation(points[i])
         point_mesh_lst.append(tm_sph)
     point_mesh = trimesh.util.concatenate(point_mesh_lst)
     return point_mesh
 
 
-def get_arrow_mesh(point_lst, normal_lst, length=0.02):
+def get_arrow_mesh(point_normal: np.ndarray, length: float = 0.02) -> trimesh.Trimesh:
+    """
+    Args:
+        point_normal: (N, 6) points and normals
+        length: length of the arrow
+    Returns:
+        arrow_mesh: arrow mesh
+    """
+    points, normals = point_normal[:, :3], point_normal[:, 3:]
     arrow_mesh_lst = []
-    line = np.stack([point_lst, point_lst + length * normal_lst], axis=1)
+    line = np.stack([points, points + length * normals], axis=1)
     for i in range(line.shape[0]):
         arrow_mesh_lst.append(trimesh.creation.cylinder(radius=0.001, segment=line[i]))
         cone_trans = np.eye(4)
@@ -28,15 +42,19 @@ def get_arrow_mesh(point_lst, normal_lst, length=0.02):
         arrow_mesh_lst.append(
             trimesh.creation.cone(radius=0.003, height=0.01, transform=cone_trans)
         )
-    arrow_mesh = trimesh.util.concatenate(arrow_mesh_lst)
-    return get_point_mesh(point_lst), arrow_mesh
+    arrow_mesh = trimesh.util.concatenate([get_point_mesh(points), arrow_mesh_lst])
+    return arrow_mesh
 
 
-def get_line_mesh(point_lst):
+def get_line_mesh(lines: np.ndarray) -> trimesh.Trimesh:
+    """
+    Args:
+        lines: (N, 2, 3) lines
+    Returns:
+        line_mesh: line mesh
+    """
     line_mesh_lst = []
-    for i in range(point_lst.shape[0]):
-        line_mesh_lst.append(
-            trimesh.creation.cylinder(radius=0.001, segment=point_lst[i])
-        )
+    for i in range(lines.shape[0]):
+        line_mesh_lst.append(trimesh.creation.cylinder(radius=0.001, segment=lines[i]))
     line_mesh = trimesh.util.concatenate(line_mesh_lst)
     return line_mesh

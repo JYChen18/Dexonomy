@@ -2,9 +2,7 @@
 
 Official implementation of *Dexonomy: Synthesizing All Dexterous Grasp Types in a Grasp Taxonomy* [RSS 2025]. 
 
-
-[![Project Page](https://img.shields.io/badge/Project-Page-Green.svg)]()
-[![Paper PDF](https://img.shields.io/badge/Paper-PDF-orange.svg)]()
+[Project Page](https://pku-epic.github.io/Dexonomy) | [Paper](https://arxiv.org/abs/2504.18829) | [Dataset](https://huggingface.co/datasets/JiayiChenPKU/Dexonomy/tree/main) | [UI Demo](https://gfrl.github.io/DexAnno/) | [Learning](https://github.com/JYChen18/DexLearn)
 
 ## Overview
 
@@ -25,6 +23,7 @@ All starting from just **one** human-annotated template *per hand and grasp type
 - Object Assets: Rigid objects (ShapeNet & Objaverse), Articulated objects (PartNet)
 - Physics Simulator: MuJoCo
 - Grasping Trajectory Synthesis: cuRobo integration
+- Manipulation tasks: ...
 
 
 ## Installation
@@ -70,9 +69,10 @@ Alternatively, you can pre-process your own object assets using [MeshProcess](ht
 ### 2. Synthesize Grasps
 Run the following commands to synthesize grasps for a specific grasp type:
 ```bash
-python -m dexonomy.main op=tmpl  # Generate initial template from human annotations
-python -m dexonomy.script 'template_name=[1_Large_Diameter]'
+dexrun op=tmpl  # Convert human annotations to valid templates
+dexsyn 'tmpl_name=[1_Large_Diameter]' # Run the script for complete synthesis pipeline
 ```
+where `dexrun` is the alias for `python -m dexonomy.main` and `dexsyn` is the alias for `python -m dexonomy.script`.
 
 ## Tutorial
 For a detailed walkthrough of **template annotation** and **code usage**, please refer to [getting_started](https://github.com/JYChen18/Dexonomy/tree/main/getting_started).

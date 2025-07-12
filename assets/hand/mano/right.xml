@@ -2,7 +2,7 @@
   <compiler angle="radian" meshdir="meshes" autolimits="true"/>
 
   <option cone="elliptic" impratio="10"/>
-   <option impratio="10" integrator="implicitfast" cone="elliptic" noslip_iterations="2" >
+   <option impratio="10" integrator="implicitfast" cone="elliptic" noslip_stepations="2" >
       <flag gravity="disable" nativeccd="enable"/>
    </option>
 

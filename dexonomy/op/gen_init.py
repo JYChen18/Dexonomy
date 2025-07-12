@@ -3,347 +3,167 @@ import torch
 import random
 import math
 import os
-import warp as wp
 import logging
 import traceback
 from glob import glob
 
-from dexonomy.util.warp_util import MeshQueryPoint, MeshLineSegCollision
+from dexonomy.util.warp_util import WarpCollisionEnv
 from dexonomy.util.np_util import np_array32
 from dexonomy.util.torch_util import (
     torch_transform_points,
     torch_quaternion_to_matrix,
     torch_matrix_to_quaternion,
     torch_normalize_vector,
-    torch_pose_multiply,
+    torch_multiply_pose,
     torch_inv_transform_points,
 )
 from dexonomy.data.obj_loader import get_object_dataloader
-from dexonomy.data.hand_loader import HandTemplateLibrary
+from dexonomy.data.hand_loader import HandTemplateLoader
 from dexonomy.qp.qp_batched import get_qp_error_batched
 from dexonomy.qp.qp_single import ContactQP
 
 
-def valid_index_padding(parallel_id_lst, valid_idx_bool, num_min, num_max):
+def valid_index_padding(
+    obj_id: torch.Tensor, valid_bool: torch.Tensor, n_min: int, n_max: int
+) -> torch.Tensor:
+    """Padding the valid index of each object to satisfy the minimum and maximum number."""
     padded_valid_idx = []
-    for i in range(1 + parallel_id_lst.max()):
-        i_old_valid = torch.where(parallel_id_lst == i)[0]
-        i_new_valid = torch.where(valid_idx_bool & (parallel_id_lst == i))[0]
-        if len(i_new_valid) < num_min:
+    for i in range(1 + obj_id.max()):
+        i_old_valid = torch.where(obj_id == i)[0]
+        i_new_valid = torch.where(valid_bool & (obj_id == i))[0]
+        if len(i_new_valid) < n_min:
             i_other = i_old_valid[~torch.isin(i_old_valid, i_new_valid)]
             i_new_valid = torch.cat(
                 [
                     i_new_valid,
-                    i_other[torch.randperm(len(i_other))[: num_min - len(i_new_valid)]],
+                    i_other[torch.randperm(len(i_other))[: n_min - len(i_new_valid)]],
                 ]
             )
-        elif len(i_new_valid) > num_max:
-            i_new_valid = i_new_valid[torch.randperm(len(i_new_valid))[:num_max]]
+        elif len(i_new_valid) > n_max:
+            i_new_valid = i_new_valid[torch.randperm(len(i_new_valid))[:n_max]]
         padded_valid_idx.extend(i_new_valid)
-    padded_valid_idx = torch.tensor(padded_valid_idx, device=valid_idx_bool.device)
+    padded_valid_idx = torch.tensor(padded_valid_idx, device=valid_bool.device)
     return padded_valid_idx
 
 
-class ObjectAligner:
-
-    def __init__(self, device, opt_iter, filter):
+class InitFilter:
+    def __init__(self, cfg: dict, device: torch.device, coll_env: WarpCollisionEnv):
+        self.cfg = cfg
         self.device = device
-        self._wp_device = wp.torch.device_from_torch(device)
-        self._wp_mesh_cache = {}
-        self.buffer_shape = torch.Size([0])
-        self.coll_buffer_length = 0
-        self.opt_iter = opt_iter
-        self.filter_cfg = filter
+        self.coll_env = coll_env
         return
 
-    def load_warp_mesh(self, collision_mesh_lst):
-        wm_id_lst = []
-        for collision_mesh in collision_mesh_lst:
-            obj_name, tm_obj = collision_mesh[0], collision_mesh[1]
-            if obj_name not in self._wp_mesh_cache:
-                v = wp.array(tm_obj.vertices, dtype=wp.vec3, device=self._wp_device)
-                f = wp.array(np.ravel(tm_obj.faces), dtype=int, device=self._wp_device)
-                vn = wp.array(
-                    tm_obj.vertex_normals, dtype=wp.vec3, device=self._wp_device
-                )
-                self._wp_mesh_cache[obj_name] = wp.Mesh(
-                    points=v, indices=f, velocities=vn
-                )
-            wm_id_lst.append(self._wp_mesh_cache[obj_name].id)
-        wm_id_lst = torch.tensor(wm_id_lst, dtype=torch.int64, device=self.device)
-        return wm_id_lst
-
-    def matching(
-        self,
-        nf_hc,
-        nf_hf_rot,
-        nf_hf_trans,
-        hf_hsk,
-        grasp_qpos,
-        hand_evolution_num,
-        sampled_rot,
-        sampled_trans,
-        obj_scale,
-        wf_sof_pose,
-        wf_ext_center,
-        wf_ext_wrench,
-        collision_plane,
-        collision_mesh_id,
-    ):
-
-        opt_q = torch_matrix_to_quaternion(sampled_rot)
-        opt_q.requires_grad_()
-        opt_t = sampled_trans
-        opt_t.requires_grad_()
-        optimizer = torch.optim.Adam(
-            [{"params": opt_q, "lr": 1e-2}, {"params": opt_t, "lr": 1e-2}]
-        )
-
-        b, h = opt_t.shape[:-1]
-        n_points = nf_hc.shape[-2]
-        obj_scale = obj_scale.view(b, 1, 1, 3)
-
-        if self.buffer_shape != torch.Size([b, h, n_points]):
-            self.out_points = torch.zeros([b, h, n_points, 3], device=self.device)
-            self.out_normals = torch.zeros([b, h, n_points, 3], device=self.device)
-            self.adj_points = torch.zeros([b, h, n_points, 3], device=self.device)
-            self.buffer_shape = torch.Size([b, h, n_points])
-
-        for i in range(self.opt_iter):
-            optimizer.zero_grad()
-            opt_r = torch_quaternion_to_matrix(opt_q)
-            of_hc = torch_transform_points(
-                nf_hc, opt_r, opt_t.view(b, h, 1, 3), 1 / obj_scale
-            )
-
-            of_op, of_on = MeshQueryPoint.apply(
-                of_hc[..., :3].contiguous(),
-                self.out_points,
-                self.out_normals,
-                self.adj_points,
-                collision_mesh_id,
-            )
-
-            loss_dist = ((obj_scale * (of_op - of_hc[..., :3])) ** 2).sum(
-                dim=-1
-            )  # [b,h,n]
-            loss_normal = ((of_on - of_hc[..., 3:]) ** 2).sum(dim=-1)  # [b,h,n]
-            loss = (1000 * loss_dist + loss_normal).mean(dim=-1).mean(dim=-1).sum()
-            if i == self.opt_iter - 1:
-                break
-
-            loss.backward()
-            optimizer.step()
-
-        # Post processing
-        sof_nf_quat = torch_normalize_vector(opt_q)
-        sof_nf_rot = torch_quaternion_to_matrix(sof_nf_quat)
-        sof_nf_trans = opt_t.view(b, h, 1, 3) * obj_scale
-
-        wf_sof_rot = torch_quaternion_to_matrix(wf_sof_pose[..., 3:]).view(b, 1, 3, 3)
-        wf_sof_trans = wf_sof_pose[..., :3].view(b, 1, 1, 3)
-
-        wf_nf_rot, wf_nf_trans = torch_pose_multiply(
-            wf_sof_rot, wf_sof_trans, sof_nf_rot, sof_nf_trans
-        )
-
-        wf_hc = torch_transform_points(of_hc, wf_sof_rot, wf_sof_trans, obj_scale)
-        wf_op = torch_transform_points(of_op, wf_sof_rot, wf_sof_trans, obj_scale)
-        wf_on = torch_transform_points(of_on, wf_sof_rot)
-
-        wf_hf_rot, wf_hf_trans = torch_pose_multiply(
-            wf_nf_rot,
-            wf_nf_trans,
-            nf_hf_rot,
-            nf_hf_trans.unsqueeze(-2),
-        )
-
-        result_dict = {
-            "grasp_pose": torch.cat(
-                [wf_hf_trans.squeeze(-2), torch_matrix_to_quaternion(wf_hf_rot)],
-                dim=-1,
-            ).view(b * h, 7),
-            "hand_contacts": wf_hc.view(b * h, -1, 6),
-            "hand_skeleton": hf_hsk.view(b * h, -1, 3),
-            "grasp_qpos": grasp_qpos.view(b * h, -1),
-            "hand_evolution_num": hand_evolution_num.view(b * h),
-            "obj_cp": wf_op.view(b * h, -1, 3),
-            "obj_cn": wf_on.view(b * h, -1, 3),
-            "obj_scale": obj_scale.repeat(1, h, 1, 1).view(b * h, 3),
-            "parallel_id_lst": torch.arange(b * h, device=self.device) // h,
-            "obj_pose": wf_sof_pose.repeat_interleave(h, dim=0),
-            "ext_center": wf_ext_center.repeat_interleave(h, dim=0),
-            "ext_wrench": wf_ext_wrench.repeat_interleave(h, dim=0),
-        }
-
-        # Filtering
-        result_dict = self.wrapped_filter(
-            result_dict,
-            "loss_based",
-            3,
-            loss_normal=loss_normal.view(b * h, -1),
-            loss_dist=loss_dist.view(b * h, -1),
-        )
-        result_dict = self.wrapped_filter(
-            result_dict,
-            "collision_based",
-            2,
-            collision_plane=collision_plane,
-            collision_mesh_id=collision_mesh_id,
-        )
-        result_dict = self.wrapped_filter(result_dict, "qp_based", 1)
-        result_dict = self.wrapped_filter(result_dict, "fps_based", 0)
-        return result_dict
-
     @torch.no_grad()
-    def wrapped_filter(self, result_dict, filter_name, later_filter_num, **kwargs):
-        old_valid_num = len(result_dict["parallel_id_lst"])
-        if self.filter_cfg[filter_name]["enable"]:
-            valid_idx_bool = eval(f"self.{filter_name}_filter")(result_dict, **kwargs)
+    def _wrapped_filter(self, data, filter_name, n_filter_remained):
+        n_old = len(data["obj_id"])
+        if filter_name in self.cfg and self.cfg[filter_name] is not None:
+            valid_bool = eval(f"self._{filter_name}_filter")(data)
         else:
-            valid_idx_bool = torch.ones(old_valid_num, dtype=bool, device=self.device)
-        num_min = int(
-            self.filter_cfg.final_num
-            / ((1 - self.filter_cfg.min_ratio) ** later_filter_num)
-        )
-        num_max = int(
-            self.filter_cfg.final_num
-            / ((1 - self.filter_cfg.max_ratio) ** later_filter_num)
-        )
-        new_valid_idx = valid_index_padding(
-            result_dict["parallel_id_lst"],
-            valid_idx_bool,
-            num_min,
-            num_max,
-        )
-        for k, v in result_dict.items():
-            result_dict[k] = v[new_valid_idx]
-        logging.debug(
-            f"{filter_name} filtering remain {len(new_valid_idx)} out of {old_valid_num}"
-        )
-        return result_dict
+            valid_bool = torch.ones(n_old, dtype=torch.bool, device=self.device)
+        gen_cfg = self.cfg.general
+        n_min = int(gen_cfg.n_final / ((1 - gen_cfg.min_ratio) ** n_filter_remained))
+        n_max = int(gen_cfg.n_final / ((1 - gen_cfg.max_ratio) ** n_filter_remained))
+        valid_idx = valid_index_padding(data["obj_id"], valid_bool, n_min, n_max)
+        for k, v in data.items():
+            data[k] = v[valid_idx]
+        logging.debug(f"{filter_name} filtering remain {len(valid_idx)} out of {n_old}")
+        return data
 
-    def loss_based_filter(self, result_dict, loss_normal, loss_dist):
-        loss_valid_idx = (
-            loss_normal.max(dim=-1)[0] < self.filter_cfg["loss_based"].normal_thre
-        ) & (loss_dist.max(dim=-1)[0] < self.filter_cfg["loss_based"].pos_thre)
-        return loss_valid_idx
+    def _loss_filter(self, data):
+        valid_bool = (
+            data["loss_normal"].max(dim=-1)[0] < self.cfg.loss.normal_thre
+        ) & (data["loss_dist"].max(dim=-1)[0] < self.cfg.loss.pos_thre)
+        return valid_bool
 
-    def collision_based_filter(self, result_dict, collision_plane, collision_mesh_id):
-        handframe_skeleton, grasp_pose, obj_pose, obj_scale, collision_mesh_id = (
-            result_dict["hand_skeleton"],
-            result_dict["grasp_pose"],
-            result_dict["obj_pose"],
-            result_dict["obj_scale"],
-            collision_mesh_id[result_dict["parallel_id_lst"]],
-        )
-        collision_plane = (
-            collision_plane[result_dict["parallel_id_lst"]]
-            if collision_plane is not None
-            else None
-        )
-        query_shape = grasp_pose.shape[0]
-        if self.coll_buffer_length < query_shape:
-            self.coll_buffer_length = query_shape
-            self.coll_buf = torch.ones([query_shape], dtype=bool, device=self.device)
-        else:
-            self.coll_buf[:] = 1
+    def _collision_filter(self, data):
+        hand_skt_h = data["hand_skt_h"]
+        grasp_pose = data["grasp_pose"]
+        obj_pose = data["obj_pose"]
+        obj_scale = data["obj_scale"]
+        obj_id = data["obj_id"]
+        coll_cfg = self.cfg.collision
 
-        wf_hsk = torch_transform_points(
-            handframe_skeleton,
+        hand_skt_w = torch_transform_points(
+            hand_skt_h,
             torch_quaternion_to_matrix(grasp_pose[..., 3:]),
             grasp_pose[..., :3].view(-1, 1, 3),
         )
-        if collision_plane is not None:
-            pf_hsk = torch_inv_transform_points(
-                wf_hsk,
-                torch_quaternion_to_matrix(collision_plane[..., 3:]),
-                collision_plane[..., :3].view(-1, 1, 3),
-            )
-            self.coll_buf[:query_shape] = (pf_hsk[..., -1] > 0.02).min(dim=-1)[0]
-
-        of_hsk = torch_inv_transform_points(
-            wf_hsk,
+        valid_bool1 = self.coll_env.check_plane(hand_skt_w, obj_id, coll_cfg.plane_thre)
+        hand_skt_o = torch_inv_transform_points(
+            hand_skt_w,
             torch_quaternion_to_matrix(obj_pose[..., 3:]),
             obj_pose[..., :3].view(-1, 1, 3),
             obj_scale.view(-1, 1, 3),
         )
-        out_valid_idx = MeshLineSegCollision(
-            of_hsk, collision_mesh_id, self.coll_buf[:query_shape]
-        )
-        return out_valid_idx
+        valid_bool2 = self.coll_env.check_mesh(hand_skt_o, obj_id)
+        return valid_bool1 & valid_bool2
 
-    def qp_based_filter(self, result_dict):
-        obj_points, obj_normals, ext_wrench, ext_center = (
-            result_dict["obj_cp"],
-            result_dict["obj_cn"],
-            result_dict["ext_wrench"],
-            result_dict["ext_center"],
-        )
+    def _qp_filter(self, data):
+        obj_point = data["obj_cp_w"]
+        obj_normal = data["obj_cn_w"]
+        ext_wrench = data["ext_wrench"]
+        ext_center = data["ext_center"]
 
-        qp_cfg = self.filter_cfg["qp_based"]
-        miu_coef = qp_cfg["miu_coef"]
+        qp_cfg = self.cfg.qp
+        miu_coef = qp_cfg.miu_coef
         qp_error = torch.ones(
-            obj_points.shape[0], dtype=torch.float32, device=self.device
+            obj_point.shape[0], dtype=torch.float32, device=self.device
         )
-        if qp_cfg["batched"]:
-            logging.debug(
-                f"qp shape: {obj_points.shape} {self.filter_cfg['qp_based']['max_batch_size']}"
-            )
-            max_batch_size = qp_cfg["max_batch_size"] // obj_points.shape[-2]
-            batch_num = math.ceil(obj_points.shape[0] / max_batch_size)
-            for i in range(batch_num):
-                start = i * max_batch_size
-                end = min((i + 1) * max_batch_size, obj_points.shape[0])
-
+        if qp_cfg.batch_size is not None:
+            logging.debug(f"qp shape: {obj_point.shape} {qp_cfg.batch_size}")
+            batch_size = qp_cfg.batch_size // obj_point.shape[-2]
+            n_batch = math.ceil(obj_point.shape[0] / batch_size)
+            for i in range(n_batch):
+                start = i * batch_size
+                end = min((i + 1) * batch_size, obj_point.shape[0])
                 _, qp_error[start:end] = get_qp_error_batched(
-                    obj_points[start:end],
-                    obj_normals[start:end],
+                    obj_point[start:end],
+                    obj_normal[start:end],
                     ext_wrench[start:end],
                     ext_center[start:end],
                     miu_coef,
                 )
         else:
             single_solver = ContactQP(miu_coef)
-            for i in range(obj_points.shape[0]):
+            for i in range(obj_point.shape[0]):
                 _, qp_error[i] = single_solver.solve(
-                    obj_points[i].cpu().numpy(),
-                    obj_normals[i].cpu().numpy(),
+                    obj_point[i].cpu().numpy(),
+                    obj_normal[i].cpu().numpy(),
                     ext_wrench[i].cpu().numpy(),
                     ext_center[i].cpu().numpy(),
                 )
+        valid_bool = qp_error < qp_cfg.thre
+        return valid_bool
 
-        out_valid_idx = qp_error < qp_cfg["threshold"]
-        return out_valid_idx
+    def _fps_filter(self, data):
+        obj_cp_w = data["obj_cp_w"]
+        obj_pose = data["obj_pose"]
+        obj_id = data["obj_id"]
+        fps_cfg = self.cfg.fps
 
-    def fps_based_filter(self, result_dict):
-        obj_points = result_dict["obj_cp"]
-        obj_pose = result_dict["obj_pose"]
-        parallel_id_lst = result_dict["parallel_id_lst"]
-        of_op = torch_inv_transform_points(
-            obj_points,
+        obj_cp_o = torch_inv_transform_points(
+            obj_cp_w,
             torch_quaternion_to_matrix(obj_pose[..., 3:]),
             obj_pose[..., :3].view(-1, 1, 3),
         )
-        out_valid_idx = torch.zeros(of_op.shape[0], device=self.device).bool()
-        of_single_op = {}
+        valid_bool = torch.zeros(obj_cp_o.shape[0], device=self.device).bool()
+        obj_cp_dict = {}
         corr_index = {}
-        for i in range(parallel_id_lst.shape[0]):
-            oi = str(parallel_id_lst[i].data.item())
-            if oi not in of_single_op.keys():
-                of_single_op[oi] = [of_op[i]]
-                corr_index[oi] = [i]
+        for i in range(obj_id.shape[0]):
+            o_id = str(obj_id[i].data.item())
+            if o_id not in obj_cp_dict.keys():
+                obj_cp_dict[o_id] = [obj_cp_o[i]]
+                corr_index[o_id] = [i]
             else:
-                of_single_op[oi].append(of_op[i])
-                corr_index[oi].append(i)
+                obj_cp_dict[o_id].append(obj_cp_o[i])
+                corr_index[o_id].append(i)
 
-        for k, v in of_single_op.items():
+        for k, v in obj_cp_dict.items():
             all_points = torch.stack(v, dim=0)
-
             rand_start = random.randint(0, all_points.shape[0] - 1)
             valid_points = all_points[rand_start].unsqueeze(0)
-            out_valid_idx[corr_index[k][rand_start]] = True
-            for i in range(min(len(all_points), self.filter_cfg.final_num - 1)):
+            valid_bool[corr_index[k][rand_start]] = True
+            for i in range(min(len(all_points), self.cfg.general.n_final - 1)):
                 farthest_dist, farthest_id = (
                     (valid_points.unsqueeze(0) - all_points.unsqueeze(1))
                     .norm(dim=-1)
@@ -351,159 +171,200 @@ class ObjectAligner:
                     .min(dim=-1)[0]
                     .max(dim=-1)
                 )
+                if fps_cfg.dist_thre is not None and farthest_dist > fps_cfg.dist_thre:
+                    break
                 valid_points = torch.cat(
                     [valid_points, all_points[farthest_id].unsqueeze(0)], dim=0
                 )
-                out_valid_idx[corr_index[k][farthest_id]] = True
-        return out_valid_idx
+                valid_bool[corr_index[k][farthest_id]] = True
+        return valid_bool
+
+    def forward(self, data: dict):
+        data = self._wrapped_filter(data, "loss", 3)
+        data = self._wrapped_filter(data, "collision", 2)
+        data = self._wrapped_filter(data, "qp", 1)
+        data = self._wrapped_filter(data, "fps", 0)
+        return data
 
 
-def op_init(configs):
-    op_config = configs.op
-    assert os.path.exists(
-        os.path.join(configs.init_template_dir, configs.template_name + ".npy")
-    )
-    logging.info(f"Hand template name: {configs.template_name}")
+class HandObjMatcher:
 
-    obj_loader = get_object_dataloader(op_config.object, configs.n_worker)
-    matcher = ObjectAligner(op_config.device, **op_config.matcher)
-    try:
-        hand_library = HandTemplateLibrary(
-            xml_path=configs.hand.xml_path,
-            skeleton_path=configs.hand_skeleton_path,
-            template_name=configs.template_name,
-            init_template_dir=configs.init_template_dir,
-            new_template_dir=configs.new_template_dir,
-            max_data_buffer=configs.max_template_buffer,
-            num_workers=configs.n_worker,
+    def __init__(self, cfg: dict, device: torch.device, coll_env: WarpCollisionEnv):
+        self.cfg = cfg
+        self.device = device
+        self.coll_env = coll_env
+
+    def forward(self, tmpl_sample: dict, obj_sample: dict):
+        opt_q = torch_matrix_to_quaternion(obj_sample["rot_o2c_init"])
+        opt_t = obj_sample["trans_o2c_init"]
+        opt_q.requires_grad_()
+        opt_t.requires_grad_()
+        optimizer = torch.optim.Adam(
+            [{"params": opt_q, "lr": 1e-2}, {"params": opt_t, "lr": 1e-2}]
         )
 
-        for eee in range(op_config.epoch):
-            logging.info(f"Epoch {eee}")
-            for obj_samples in obj_loader:
-                # Check exist path
-                continue_flag = False
-                for scene_cfg in obj_samples["scene_cfg"]:
-                    check_dir = os.path.join(
-                        configs.init_dir,
-                        configs.template_name,
-                        scene_cfg["scene_id"],
-                        f"{eee}**.npy",
-                    )
-                    if len(glob(check_dir)) > 0:
-                        continue_flag = True
-                        break
-                if continue_flag:
-                    logging.info("skip")
-                    continue
+        b, h = opt_t.shape[:-1]
+        obj_scale = obj_sample["obj_scale"].view(b, 1, 1, 3)
+        h_cpn_c = tmpl_sample["hand_cpn_c"]
 
-                obj_samples = {
+        for i in range(self.cfg.opt_step):
+            optimizer.zero_grad()
+            opt_r = torch_quaternion_to_matrix(opt_q)
+            h_cpn_o = torch_transform_points(
+                h_cpn_c, opt_r, opt_t.view(b, h, 1, 3), 1 / obj_scale
+            )
+            o_cp_o, o_cn_o = self.coll_env.query_point(h_cpn_o[..., :3])
+            loss_dist = ((obj_scale * (o_cp_o - h_cpn_o[..., :3])) ** 2).sum(dim=-1)
+            loss_normal = ((o_cn_o - h_cpn_o[..., 3:]) ** 2).sum(dim=-1)  # [b,h,n]
+            loss = (1000 * loss_dist + loss_normal).mean(dim=-1).mean(dim=-1).sum()
+            if i == self.cfg.opt_step - 1:
+                break
+
+            loss.backward()
+            optimizer.step()
+
+        # Post processing
+        quat_so2c = torch_normalize_vector(opt_q)
+        rot_so2c = torch_quaternion_to_matrix(quat_so2c)
+        trans_so2c = opt_t.view(b, h, 1, 3) * obj_scale
+
+        pose_w2so = obj_sample["pose_w2so"]
+        rot_w2so = torch_quaternion_to_matrix(pose_w2so[..., 3:]).view(b, 1, 3, 3)
+        trans_w2so = pose_w2so[..., :3].view(b, 1, 1, 3)
+
+        rot_w2c, trans_w2c = torch_multiply_pose(
+            rot_w2so, trans_w2so, rot_so2c, trans_so2c
+        )
+
+        h_cpn_w = torch_transform_points(h_cpn_o, rot_w2so, trans_w2so, obj_scale)
+        o_cp_w = torch_transform_points(o_cp_o, rot_w2so, trans_w2so, obj_scale)
+        o_cn_w = torch_transform_points(o_cn_o, rot_w2so, trans_w2so, obj_scale)
+
+        rot_c2h = tmpl_sample["rot_c2h"]
+        trans_c2h = tmpl_sample["trans_c2h"].unsqueeze(-2)
+        rot_w2h, trans_w2h = torch_multiply_pose(rot_w2c, trans_w2c, rot_c2h, trans_c2h)
+        quat_w2h = torch_matrix_to_quaternion(rot_w2h)
+        trans_w2h = trans_w2h.squeeze(-2)
+
+        ret_dict = {
+            "loss_normal": loss_normal.view(b * h, -1),
+            "loss_dist": loss_dist.view(b * h, -1),
+            "grasp_pose": torch.cat([trans_w2h, quat_w2h], dim=-1).view(b * h, 7),
+            "hand_cpn_w": h_cpn_w.view(b * h, -1, 6),
+            "hand_skt_h": tmpl_sample["hand_skt_h"].view(b * h, -1, 3),
+            "grasp_qpos": tmpl_sample["grasp_qpos"][..., 7:].view(b * h, -1),
+            "n_evo": tmpl_sample["n_evo"].view(b * h),
+            "obj_cp_w": o_cp_w.view(b * h, -1, 3),
+            "obj_cn_w": o_cn_w.view(b * h, -1, 3),
+            "obj_scale": obj_scale.repeat(1, h, 1, 1).view(b * h, 3),
+            "obj_id": torch.arange(b * h, device=self.device) // h,
+            "obj_pose": pose_w2so.repeat_interleave(h, dim=0),
+            "ext_center": obj_sample["ext_center"].repeat_interleave(h, dim=0),
+            "ext_wrench": obj_sample["ext_wrench"].repeat_interleave(h, dim=0),
+        }
+        return ret_dict
+
+
+def operate_init(cfg):
+    op_cfg = cfg.op
+    assert os.path.exists(os.path.join(cfg.init_tmpl_dir, cfg.tmpl_name + ".npy"))
+    logging.info(f"Hand template name: {cfg.tmpl_name}")
+
+    obj_loader = get_object_dataloader(op_cfg.object, cfg.n_worker)
+    coll_env = WarpCollisionEnv(op_cfg.device)
+    ho_matcher = HandObjMatcher(op_cfg.matcher, op_cfg.device, coll_env)
+    init_filter = InitFilter(op_cfg.filter, op_cfg.device, coll_env)
+
+    try:
+        tmpl_loader = HandTemplateLoader(
+            xml_path=cfg.hand.xml_path,
+            skt_path=cfg.hand_skt_path,
+            tmpl_name=cfg.tmpl_name,
+            init_tmpl_dir=cfg.init_tmpl_dir,
+            new_tmpl_dir=cfg.new_tmpl_dir,
+            max_data_buffer=cfg.tmpl_max_buf,
+            n_worker=cfg.n_worker,
+        )
+
+        for eee in range(op_cfg.epoch):
+            logging.info(f"Epoch {eee}")
+            for obj_sample in obj_loader:
+                if cfg.skip_done:
+                    # Check if the result already exists
+                    continue_flag = False
+                    for scene_cfg in obj_sample["scene_cfg"]:
+                        check_dir = os.path.join(
+                            cfg.init_dir,
+                            cfg.tmpl_name,
+                            scene_cfg["scene_id"],
+                            f"{eee}**.npy",
+                        )
+                        if len(glob(check_dir)) > 0:
+                            continue_flag = True
+                            break
+                    if continue_flag:
+                        logging.info("Skip")
+                        continue
+
+                obj_sample = {
                     k: (
-                        v.to(op_config.device, non_blocking=True)
+                        v.to(op_cfg.device, non_blocking=True)
                         if isinstance(v, torch.Tensor)
                         else v
                     )
-                    for k, v in obj_samples.items()
+                    for k, v in obj_sample.items()
                 }
 
-                collision_mesh_id = matcher.load_warp_mesh(
-                    obj_samples["collision_mesh"]
-                )
+                coll_env.load(obj_sample["col_plane"], obj_sample["col_mesh"])
 
-                hand_temp_dict = hand_library.get_batched_data(
-                    obj_samples["sampled_rot"].shape[:2], op_config.device
+                tmpl_sample = tmpl_loader.get_batched_data(
+                    obj_sample["rot_o2c_init"].shape[:2], op_cfg.device
                 )
+                ret_dict = ho_matcher.forward(tmpl_sample, obj_sample)
+                ret_dict = init_filter.forward(ret_dict)
 
-                result_dict = matcher.matching(
-                    hand_temp_dict["nf_hc"],
-                    hand_temp_dict["nf_hf_rot"],
-                    hand_temp_dict["nf_hf_trans"],
-                    hand_temp_dict["hf_hsk"],
-                    hand_temp_dict["grasp_qpos"][..., 7:],
-                    hand_temp_dict["evolution_num"],
-                    obj_samples["sampled_rot"],
-                    obj_samples["sampled_trans"],
-                    obj_samples["obj_scale"],
-                    obj_samples["wf_sof_pose"],
-                    obj_samples["wf_ext_center"],
-                    obj_samples["wf_ext_wrench"],
-                    (
-                        obj_samples["collision_plane"]
-                        if "collision_plane" in obj_samples
-                        else None
-                    ),
-                    collision_mesh_id,
-                )
-                succ_num = result_dict["grasp_pose"].shape[0]
-                logging.info(f"Get {succ_num} valid")
-                if succ_num == 0:
+                n_valid = ret_dict["grasp_pose"].shape[0]
+                logging.info(f"Get {n_valid} valid")
+                if n_valid == 0:
                     continue
 
-                for k, v in result_dict.items():
-                    result_dict[k] = v.cpu().numpy()
+                for k, v in ret_dict.items():
+                    ret_dict[k] = v.cpu().numpy()
 
-                for count, (
-                    grasp_pose,
-                    grasp_qpos,
-                    hand_c,
-                    hand_evolution_num,
-                    obj_cp,
-                    obj_cn,
-                    obj_id,
-                    ext_center,
-                    ext_wrench,
-                ) in enumerate(
-                    zip(
-                        result_dict["grasp_pose"],
-                        result_dict["grasp_qpos"],
-                        result_dict["hand_contacts"],
-                        result_dict["hand_evolution_num"],
-                        result_dict["obj_cp"],
-                        result_dict["obj_cn"],
-                        result_dict["parallel_id_lst"],
-                        result_dict["ext_center"],
-                        result_dict["ext_wrench"],
-                    )
-                ):
-
-                    scene_cfg = obj_samples["scene_cfg"][obj_id]
-                    scene_path = obj_samples["scene_path"][obj_id]
+                for count, o_id in enumerate(ret_dict["obj_id"]):
+                    g_pose = ret_dict["grasp_pose"][count]
+                    g_qpos = ret_dict["grasp_qpos"][count]
+                    o_cp_w = ret_dict["obj_cp_w"][count]
+                    o_cn_w = ret_dict["obj_cn_w"][count]
+                    scene_cfg = obj_sample["scene_cfg"][o_id]
                     grasp_dir = os.path.join(
-                        configs.init_dir,
-                        hand_temp_dict["hand_template_name"],
+                        cfg.init_dir,
+                        tmpl_sample["tmpl_name"],
                         scene_cfg["scene_id"],
                     )
                     os.makedirs(grasp_dir, exist_ok=True)
-
-                    obj_worldframe_contacts = np.concatenate([obj_cp, -obj_cn], axis=-1)
                     np.save(
                         f"{grasp_dir}/{eee}_{count}_grasp.npy",
                         {
-                            "evolution_num": np_array32([hand_evolution_num]),
-                            "hand_type": configs.hand_name,
-                            "hand_template_name": hand_temp_dict["hand_template_name"],
-                            "grasp_qpos": np.concatenate([grasp_pose, grasp_qpos])[
-                                None
-                            ],
-                            "hand_worldframe_contacts": hand_c,
-                            "hand_contact_body_names": hand_temp_dict[
-                                "hand_contact_body_names"
-                            ],
-                            "necessary_contact_body_names": hand_temp_dict[
-                                "necessary_contact_body_names"
-                            ],
-                            "obj_worldframe_contacts": obj_worldframe_contacts,
-                            "ext_center": ext_center,
-                            "ext_wrench": ext_wrench,
-                            "scene_path": scene_path,
+                            "hand_name": cfg.hand_name,
+                            "tmpl_name": tmpl_sample["tmpl_name"],
+                            "hand_cbody": tmpl_sample["hand_cbody"],
+                            "required_cbody": tmpl_sample["required_cbody"],
+                            "grasp_qpos": np.concatenate([g_pose, g_qpos])[None],
+                            "obj_cpn_w": np.concatenate([o_cp_w, -o_cn_w], axis=-1),
+                            "hand_cpn_w": ret_dict["hand_cpn_w"][count],
+                            "ext_center": ret_dict["ext_center"][count],
+                            "ext_wrench": ret_dict["ext_wrench"][count],
+                            "scene_path": obj_sample["scene_path"][o_id],
+                            "n_evo": np_array32([ret_dict["n_evo"][count]]),
                         },
                     )
-        logging.info("Finish op init.")
+        logging.info("Finish initialization.")
     except BaseException as e:
-        hand_library.stop()
+        tmpl_loader.stop()
         error_traceback = traceback.format_exc()
         logging.info(f"{error_traceback}")
     finally:
-        hand_library.stop()
+        tmpl_loader.stop()
 
     return

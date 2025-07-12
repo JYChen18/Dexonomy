@@ -2,280 +2,197 @@ import os
 import multiprocessing
 import logging
 import glob
-
 import numpy as np
 
-from dexonomy.qp.qp_single import ContactQP
 from dexonomy.sim import MuJoCo_OptEnv, MuJoCo_OptCfg, HandCfg
+from dexonomy.qp.qp_single import ContactQP
 from dexonomy.util.np_util import np_array32
-from dexonomy.util.file_util import load_scene_cfg
+from dexonomy.util.file_util import load_scene_cfg, safe_wrapper
 
 
-class GenGraspException(Exception):
-    pass
+class GraspFilter:
+    def __init__(self, cfg: dict, sim_env: MuJoCo_OptEnv, log_name: str):
+        self.cfg = cfg
+        self.sim_env = sim_env
+        self.log_name = log_name
 
+    def forward(self, info: dict) -> tuple[bool, dict]:
+        contact_thre = self.cfg.contact.thre if "contact" in self.cfg else None
+        ho_c, hh_c = self.sim_env.get_contacts(contact_thre)
+        if "limit" in self.cfg and self.cfg.limit and not self._limit_filter():
+            return False, ho_c
+        if "collision" in self.cfg and self.cfg.collision:
+            if not self._collision_filter(ho_c, hh_c):
+                return False, ho_c
+        if "contact" in self.cfg and self.cfg.contact:
+            if not self._contact_filter(ho_c, info["required_cbody"]):
+                return False, ho_c
+        if "qp" in self.cfg and self.cfg.qp:
+            if not self._qp_filter(ho_c, info["ext_wrench"], info["ext_center"]):
+                return False, ho_c
+        return True, ho_c
 
-def _collision_filter(ho_contact_lst, hh_contact_lst, filter_config, skip_logging=True):
-    if len(hh_contact_lst) > 0:
-        for c in hh_contact_lst:
-            if c["contact_dist"] < filter_config.hh_threshold:
-                if not skip_logging:
-                    logging.debug(
-                        f"Collision {c['contact_dist']} between {c['body1_name']} and {c['body2_name']}"
-                    )
-                return False
-    if len(ho_contact_lst) > 0:
-        for c in ho_contact_lst:
-            if c["contact_dist"] < filter_config.ho_threshold:
-                if not skip_logging:
-                    logging.debug(
-                        f"Collision {c['contact_dist']} between {c['body1_name']} and {c['body2_name']}"
-                    )
-                return False
-    return True
+    def early_stop(self) -> bool:
+        contact_thre = self.cfg.contact.thre if "contact" in self.cfg else None
+        ho_c, hh_c = self.sim_env.get_contacts(contact_thre)
+        return self._collision_filter(ho_c, hh_c, slience=True)
 
-
-def _body_filter(ho_contact_lst, necessary_contact_body_names, filter_config):
-    if not filter_config:
-        return True
-    curr_contact_body_set = set([c["body1_name"] for c in ho_contact_lst])
-    for ncb in necessary_contact_body_names:
-        if len(curr_contact_body_set.intersection(set(ncb))) == 0:
-            logging.debug(
-                f"Grasp stage misses contact {ncb}. Current contacts are {curr_contact_body_set}"
-            )
+    def _collision_filter(self, ho_c: dict, hh_c: dict, slience: bool = False) -> bool:
+        col_cfg = self.cfg.collision
+        if len(hh_c["dist"]) > 0 and max(hh_c["dist"]) < col_cfg.hh_thre:
+            if not slience:
+                logging.debug(f"{self.log_name} collision hh {max(hh_c['dist'])}")
             return False
-    return True
 
+        if len(ho_c["dist"]) > 0 and max(ho_c["dist"]) < col_cfg.ho_thre:
+            if not slience:
+                logging.debug(f"{self.log_name} collision ho {max(ho_c['dist'])}")
+            return False
+        return True
 
-def _qp_filter(
-    contact_pos,
-    contact_normal,
-    ext_wrench,
-    ext_center,
-    filter_config,
-):
-    contact_wrench, wrench_error = ContactQP(miu_coef=filter_config.miu_coef).solve(
-        contact_pos,
-        contact_normal,
-        ext_wrench,
-        ext_center,
-    )
-    if wrench_error > filter_config.threshold:
-        logging.debug(f"Grasp stage got bad QP error {wrench_error}")
-        return None
-    return contact_wrench
+    def _contact_filter(self, ho_c: dict, required_cbody: list[str]):
+        contact_cfg = self.cfg.contact
+        if len(ho_c["dist"]) == 0:
+            logging.debug(f"{self.log_name} no contact")
+            return False
+        ho_cb = set(ho_c["bn1"])
+        if contact_cfg.check_body:
+            for rcb in required_cbody:
+                if len(ho_cb.intersection(set(rcb))) == 0:
+                    logging.debug(f"{self.log_name} required: {rcb} current: {ho_cb}")
+                    return False
+        return True
 
-
-def _single_hand_refine(params):
-
-    input_npy_path, configs = params[0], params[1]
-    grasp_npy_path = input_npy_path.replace(configs.init_dir, configs.grasp_dir)
-    op_config = configs.op
-
-    grasp_data = np.load(input_npy_path, allow_pickle=True).item()
-
-    sim_env = MuJoCo_OptEnv(
-        hand_cfg=HandCfg(xml_path=configs.hand.xml_path, freejoint=True),
-        scene_cfg=load_scene_cfg(grasp_data["scene_path"]),
-        sim_cfg=MuJoCo_OptCfg(
-            obj_margin=op_config.pregrasp.ho_target_dist,
-        ),
-        debug_render=configs.debug_render,
-        debug_viewer=configs.debug_viewer,
-    )
-
-    sim_env.reset_qpos(grasp_data["grasp_qpos"][0])
-    sim_env.set_obj_margin(op_config.grasp.ho_target_dist)
-
-    try:
-        # Generate grasp qpos
-        hand_contact_body_names = grasp_data["hand_contact_body_names"]
-        hand_bodyframe_contact = sim_env.get_hand_bodyframe_contact(
-            hand_contact_body_names, grasp_data["hand_worldframe_contacts"]
+    def _qp_filter(
+        self, ho_c: dict, ext_wrench: np.ndarray, ext_center: np.ndarray
+    ) -> bool:
+        qp_cfg = self.cfg.qp
+        contact_wrenches, wrench_error = ContactQP(miu_coef=qp_cfg.miu_coef).solve(
+            ho_c["pos"], ho_c["normal"], ext_wrench, ext_center
         )
-        for ii in range(op_config.grasp.outer_iter):
-            total_loss = sim_env.apply_force_on_hand(
-                hand_contact_body_names,
-                hand_bodyframe_contact,
-                grasp_data["obj_worldframe_contacts"],
-            )
+        if wrench_error > qp_cfg.thre or contact_wrenches is None:
+            logging.debug(f"{self.log_name} bad QP error {wrench_error}")
+            return False
+        ho_c["wrench"] = 10 * contact_wrenches
+        return True
 
-            sim_env.simulation_step(op_config.grasp.inner_iter)
+    def _limit_filter(self) -> bool:
+        return self.sim_env.check_qpos_limit(self.cfg.limit.thre)
 
-            if ii == 0 or (
-                ii < op_config.grasp.outer_iter - 1
-                and np.max(prev_total_loss - total_loss) > 1e-4
-            ):
-                prev_total_loss = np.copy(total_loss)
-                continue
-            else:
-                prev_total_loss = np.copy(total_loss)
 
-            ho_contact_lst, hh_contact_lst = sim_env.get_contact_info(
-                op_config.grasp.contact_threshold
-            )
-            if not _collision_filter(
-                ho_contact_lst, hh_contact_lst, op_config.grasp.coll_filter
-            ):
-                continue
+@safe_wrapper
+def _single_grasp(param):
+    input_path, cfg = param[0], param[1]
+    grasp_path = input_path.replace(cfg.init_dir, cfg.grasp_dir)
+    grasp_cfg, pregrasp_cfg = cfg.op.grasp, cfg.op.pregrasp
+    debug_path = input_path.replace(cfg.init_dir, cfg.debug_dir)
+
+    grasp_data = np.load(input_path, allow_pickle=True).item()
+    sim_env = MuJoCo_OptEnv(
+        hand_cfg=HandCfg(xml_path=cfg.hand.xml_path, freejoint=True),
+        scene_cfg=load_scene_cfg(grasp_data["scene_path"]),
+        sim_cfg=MuJoCo_OptCfg(obj_margin=pregrasp_cfg.cdist),
+        debug_render=cfg.debug_render,
+        debug_view=cfg.debug_view,
+    )
+    sim_env.reset_qpos(grasp_data["grasp_qpos"][0])
+    sim_env.set_obj_margin(grasp_cfg.cdist)
+
+    grasp_filter = GraspFilter(grasp_cfg.filter, sim_env, "grasp")
+    pregrasp_filter = GraspFilter(pregrasp_cfg.filter, sim_env, "pregrasp")
+
+    # Generate grasp qpos
+    hand_cbody, obj_cpn_w = grasp_data["hand_cbody"], grasp_data["obj_cpn_w"]
+    hand_cpn_b = sim_env.transform_cpn_w2b(hand_cbody, grasp_data["hand_cpn_w"])
+    for ii in range(grasp_cfg.step):
+        curr_diff = sim_env.apply_contact_forces(hand_cbody, hand_cpn_b, obj_cpn_w)
+        sim_env.step_sim(grasp_cfg.substep)
+        if ii == 0 or np.max(prev_diff - curr_diff) > 1e-4:
+            prev_diff = np.copy(curr_diff)
+            continue
+        else:
+            prev_diff = np.copy(curr_diff)
+        if grasp_filter.early_stop():
             break
 
-        grasp_data["grasp_qpos"] = np_array32(sim_env.get_hand_qpos())[None]
-        # Check qpos limit
-        if not sim_env.check_qpos_limit():
-            raise GenGraspException("Grasp qpos out of limit")
+    grasp_data["grasp_qpos"] = np_array32(sim_env.get_hand_qpos())[None]
 
-        # Check necessary contact between hand and object
-        if len(ho_contact_lst) == 0 or not _body_filter(
-            ho_contact_lst,
-            grasp_data["necessary_contact_body_names"],
-            op_config.grasp.body_filter,
-        ):
-            raise GenGraspException("Grasp missing contact")
+    succ_flag, ho_c = grasp_filter.forward(grasp_data)
+    if not succ_flag:
+        sim_env.save_debug(debug_path)
+        return input_path
 
-        # Check collision between hand and object
-        if not _collision_filter(
-            ho_contact_lst,
-            hh_contact_lst,
-            op_config.grasp.coll_filter,
-            skip_logging=False,
-        ):
-            raise GenGraspException("Grasp collision")
+    # Generate squeeze qpos
+    squeeze_qpos = sim_env.get_squeeze_qpos(
+        grasp_data["grasp_qpos"][0], ho_c["bn1"], ho_c["pos"], ho_c["wrench"]
+    )
+    grasp_data["squeeze_qpos"] = np_array32(squeeze_qpos)[None]
 
-        # Check grasp quality using QP
-        hand_point = np.array([c["contact_pos"] for c in ho_contact_lst])
-        hand_normal = np.array([c["contact_normal"] for c in ho_contact_lst])
-        hand_body = [c["body1_name"] for c in ho_contact_lst]
-        contact_wrench = _qp_filter(
-            hand_point,
-            hand_normal,
-            grasp_data["ext_wrench"],
-            grasp_data["ext_center"],
-            op_config.grasp.qp_filter,
+    # Update contact information in template
+    if cfg.tmpl_upd_mode == "orig":
+        hand_cpn_w = sim_env.transform_cpn_b2w(hand_cbody, hand_cpn_b)
+    elif cfg.tmpl_upd_mode == "real" or cfg.tmpl_upd_mode == "disabled":
+        hand_cpn_w = np.concatenate([ho_c["pos"], ho_c["normal"]], axis=-1)
+        grasp_data["hand_cbody"] = ho_c["bn1"]
+    elif cfg.tmpl_upd_mode == "hybrid":
+        hand_cpn_w = sim_env.transform_cpn_b2w(hand_cbody, hand_cpn_b)
+        for h_cb, h_cpn_w in zip(hand_cbody, hand_cpn_w):
+            for c_bn1, c_pos, c_normal in zip(ho_c["bn1"], ho_c["pos"], ho_c["normal"]):
+                if c_bn1 == h_cb:
+                    dist = np.linalg.norm(h_cpn_w[:3] - c_pos)
+                    angle = np.arccos(
+                        np.clip((h_cpn_w[3:] * c_normal).sum(), a_min=-1, a_max=1)
+                    )
+                    if dist < 0.03 and angle < np.pi / 4:
+                        h_cpn_w[:3], h_cpn_w[3:] = c_pos, c_normal
+                        break
+    else:
+        raise NotImplementedError(
+            f"Undefined template update strategy: {cfg.tmpl_upd_mode}. Available choices: [orig, real, hybrid, disabled]"
         )
-        if contact_wrench is None:
-            raise GenGraspException("Grasp bad QP")
+    grasp_data["hand_cpn_w"] = hand_cpn_w
 
-        # Generate squeeze qpos
-        grasp_data["squeeze_qpos"] = np_array32(
-            sim_env.get_squeeze_qpos(
-                grasp_data["grasp_qpos"][0],
-                hand_body,
-                hand_point,
-                10 * contact_wrench,
-            )
-        )[None]
-
-        # Update contact information in template
-        if configs.update_template == "body":
-            hand_worldframe_contacts = sim_env.get_hand_worldframe_contact(
-                hand_contact_body_names, hand_bodyframe_contact
-            )
-        elif configs.update_template == "arbi":
-            hand_worldframe_contacts = np.concatenate(
-                [hand_point, hand_normal], axis=-1
-            )
-            grasp_data["hand_contact_body_names"] = hand_body
-        elif configs.update_template == "nearest" or configs.update_template == False:
-            hand_worldframe_contacts = sim_env.get_hand_worldframe_contact(
-                hand_contact_body_names, hand_bodyframe_contact
-            )
-            for body_name, wf_hc in zip(
-                hand_contact_body_names, hand_worldframe_contacts
-            ):
-                for c in ho_contact_lst:
-                    if c["body1_name"] == body_name:
-                        dist = np.linalg.norm(wf_hc[:3] - c["contact_pos"])
-                        angle = np.arccos(
-                            np.clip(
-                                (wf_hc[3:] * c["contact_normal"]).sum(),
-                                a_min=-1,
-                                a_max=1,
-                            )
-                        )
-                        if dist < 0.03 and angle < np.pi / 4:
-                            wf_hc[:3] = c["contact_pos"]
-                            wf_hc[3:] = c["contact_normal"]
-                            break
-        else:
-            raise NotImplementedError(
-                f"Undefined update_template strategy: {configs.update_template}. Available choices: [False, 'nearest', 'body', 'arbi']"
-            )
-        grasp_data["hand_worldframe_contacts"] = hand_worldframe_contacts
-
-        # Generate pregrasp qpos list
-        if op_config.pregrasp:
-            pregrasp_lst = []
-            step_group_num = 2
-            for ii in range(op_config.pregrasp.outer_iter):
-                curr_ho_margin = op_config.pregrasp.ho_target_dist * min(
-                    (ii + 1) / op_config.pregrasp.outer_iter * 2, 1
-                )
-                sim_env.set_obj_margin(curr_ho_margin)
-                sim_env.keep_hand_stable()
-                sim_env.simulation_step(op_config.grasp.inner_iter)
-                pregrasp_lst.append(np.copy(sim_env.get_hand_qpos()))
-                if not sim_env.check_qpos_limit():
-                    raise GenGraspException("Pregrasp qpos out of limit")
-                if (
-                    ii % step_group_num == 0
-                    and curr_ho_margin >= op_config.pregrasp.ho_target_dist
-                ):
-                    ho_contact_lst, hh_contact_lst = sim_env.get_contact_info()
-
-                    if not _collision_filter(
-                        ho_contact_lst, hh_contact_lst, op_config.pregrasp.coll_filter
-                    ):
-                        continue
+    # Generate pregrasp qpos list
+    if pregrasp_cfg:
+        pregrasp_lst, n_interval = [], 2
+        for ii in range(pregrasp_cfg.step):
+            curr_margin = pregrasp_cfg.cdist * min((ii + 1) / pregrasp_cfg.step * 2, 1)
+            sim_env.set_obj_margin(curr_margin)
+            sim_env.keep_hand_stable()
+            sim_env.step_sim(grasp_cfg.substep)
+            pregrasp_lst.append(np.copy(sim_env.get_hand_qpos()))
+            if ii % n_interval == 0 and curr_margin >= pregrasp_cfg.cdist:
+                if pregrasp_filter.early_stop():
                     break
 
-            # Check collision between hand and object
-            if not _collision_filter(
-                ho_contact_lst,
-                hh_contact_lst,
-                op_config.pregrasp.coll_filter,
-                skip_logging=False,
-            ):
-                raise GenGraspException("Pregrasp collision")
+        succ_flag, _ = pregrasp_filter.forward(None)
+        if not succ_flag:
+            sim_env.save_debug(debug_path)
+            return input_path
 
-            grasp_data["pregrasp_qpos"] = np_array32(np.stack(pregrasp_lst, axis=0))[
-                ::-step_group_num
-            ]
-    except GenGraspException as e:
-        sim_env.debug_postprocess(
-            save_path=input_npy_path.replace(
-                configs.init_dir, configs.debug_dir
-            ).replace(".npy", ".gif")
-        )
-        logging.debug(f"Fail ({e}) {input_npy_path}")
-        return input_npy_path
+        pregrasp_qpos = np.stack(pregrasp_lst, axis=0)[::-n_interval]
+        grasp_data["pregrasp_qpos"] = np_array32(pregrasp_qpos)
 
-    sim_env.debug_postprocess(
-        save_path=input_npy_path.replace(configs.init_dir, configs.debug_dir).replace(
-            ".npy", ".gif"
-        )
-    )
-    os.makedirs(os.path.dirname(grasp_npy_path), exist_ok=True)
-    grasp_data["evolution_num"] += 1
-    np.save(grasp_npy_path, grasp_data)
-    logging.debug(f"save to {grasp_npy_path}")
-
-    return input_npy_path
+    sim_env.save_debug(debug_path)
+    os.makedirs(os.path.dirname(grasp_path), exist_ok=True)
+    grasp_data["n_evo"] += 1
+    np.save(grasp_path, grasp_data)
+    logging.debug(f"save to {grasp_path}")
+    return input_path
 
 
-def op_grasp(configs):
-    input_path_lst = glob.glob(
-        os.path.join(configs.init_dir, "**/*.npy"), recursive=True
-    )
-    if configs.debug_name is not None:
-        input_path_lst = [p for p in input_path_lst if configs.debug_name in p]
+def operate_grasp(cfg: dict):
+    input_path_lst = glob.glob(os.path.join(cfg.init_dir, "**/*.npy"), recursive=True)
 
+    # Debug mode: only process the debug name
+    if cfg.debug_name is not None:
+        input_path_lst = [p for p in input_path_lst if cfg.debug_name in p]
+
+    # Skip already logged paths
     logged_paths = []
-    if configs.skip and os.path.exists(configs.log_path):
-        with open(configs.log_path, "r") as f:
+    if cfg.skip_done and os.path.exists(cfg.log_path):
+        with open(cfg.log_path, "r") as f:
             logged_paths = f.readlines()
-
         logged_paths = [p.split("\n")[0] for p in logged_paths]
         input_path_lst = list(set(input_path_lst).difference(set(logged_paths)))
 
@@ -283,18 +200,19 @@ def op_grasp(configs):
     if len(input_path_lst) == 0:
         return
 
-    iterable_params = zip(input_path_lst, [configs] * len(input_path_lst))
-    if configs.n_worker == 1 or configs.debug_viewer:
-        for ip in iterable_params:
-            _single_hand_refine(ip)
+    param_lst = zip(input_path_lst, [cfg] * len(input_path_lst))
+    if cfg.n_worker == 1 or cfg.debug_view:
+        for ip in param_lst:
+            _single_grasp(ip)
     else:
-        with multiprocessing.Pool(processes=configs.n_worker) as pool:
-            result_iter = pool.imap_unordered(_single_hand_refine, iterable_params)
-            results = list(result_iter)
-            write_mode = "a" if configs.skip else "w"
-            with open(configs.log_path, write_mode) as f:
+        with multiprocessing.Pool(processes=cfg.n_worker) as pool:
+            jobs = pool.imap_unordered(_single_grasp, param_lst)
+            results = list(jobs)
+            # Log the processed paths
+            write_mode = "a" if cfg.skip_done else "w"
+            with open(cfg.log_path, write_mode) as f:
                 f.write("\n".join(results) + "\n")
 
-    logging.info(f"Finish")
+    logging.info(f"Finish grasp generation")
 
     return

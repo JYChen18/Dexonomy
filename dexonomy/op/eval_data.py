@@ -1,59 +1,50 @@
 import os
 import multiprocessing
 import logging
-import numpy as np
 import glob
-import traceback
+import numpy as np
 
-from dexonomy.sim import MuJoCo_TestEnv, HandCfg, MuJoCo_TestCfg
-from dexonomy.util.file_util import load_scene_cfg, load_json
+from dexonomy.sim import MuJoCo_EvalEnv, HandCfg, MuJoCo_EvalCfg
+from dexonomy.util.file_util import load_scene_cfg, load_json, safe_wrapper
 from dexonomy.util.traj_util import get_planner
 
 
-def _single_validation(params):
-    input_npy_path, configs = params[0], params[1]
-    data_dir = configs.traj_dir if configs.adding_arm else configs.grasp_dir
-    op_config = configs.op
-    hand_config = configs.hand
-
-    grasp_data = np.load(input_npy_path, allow_pickle=True).item()
+@safe_wrapper
+def _single_eval(param):
+    input_path, cfg = param[0], param[1]
+    data_dir = cfg.traj_dir if not cfg.skip_traj else cfg.grasp_dir
+    op_cfg, hand_cfg = cfg.op, cfg.hand
+    grasp_data = np.load(input_path, allow_pickle=True).item()
     scene_cfg = load_scene_cfg(grasp_data["scene_path"])
 
     plane_flag = False
-    for obj_name, obj_cfg in scene_cfg["scene"].items():
-        if obj_cfg["type"] == "rigid_object":
-            obj_info = load_json(obj_cfg["info_path"])
-            obj_coef = obj_info["mass"] / (
-                obj_info["density"] * (obj_info["scale"] ** 3)
-            )
-            obj_cfg["density"] = configs.obj_mass / (
-                obj_coef * np.prod(obj_cfg["scale"])
-            )
-        elif obj_cfg["type"] == "plane":
+    for o_cfg in scene_cfg["scene"].values():
+        if o_cfg["type"] == "rigid_object":
+            o_info = load_json(o_cfg["info_path"])
+            o_coef = o_info["mass"] / (o_info["density"] * (o_info["scale"] ** 3))
+            o_cfg["density"] = cfg.obj_mass / (o_coef * np.prod(o_cfg["scale"]))
+        elif o_cfg["type"] == "plane":
             plane_flag = True
-    if configs.adding_arm and not plane_flag:
+    if not cfg.skip_traj and not plane_flag:
         logging.warning(
             f"Using an arm but no table is in scene cfg: {grasp_data['scene_path']}"
         )
 
-    sim_env = MuJoCo_TestEnv(
+    sim_env = MuJoCo_EvalEnv(
         hand_cfg=(
-            HandCfg(arm_flag=True, **hand_config.hand_on_arm)
-            if configs.adding_arm
-            else HandCfg(xml_path=hand_config.xml_path, freejoint=True)
+            HandCfg(arm_flag=True, **hand_cfg.arm_hand)
+            if not cfg.skip_traj
+            else HandCfg(hand_cfg.xml_path, freejoint=True)
         ),
         scene_cfg=scene_cfg,
-        sim_cfg=MuJoCo_TestCfg(
-            friction_coef=op_config.miu_coef,
-        ),
-        debug_render=configs.debug_render,
-        debug_viewer=configs.debug_viewer,
+        sim_cfg=MuJoCo_EvalCfg(miu_coef=op_cfg.miu_coef),
+        debug_render=cfg.debug_render,
+        debug_view=cfg.debug_view,
     )
 
-    init_obj_pose = np.copy(sim_env.get_interest_object_pose())
-
+    init_obj_pose = np.copy(sim_env.get_active_obj_pose())
     planner = get_planner(scene_cfg["task"])
-    qpos_lst, ctype_lst, extdir_lst, target_obj_pose = planner.plan_trajectory(
+    ctrl_qpos, ctrl_type, ext_dir, target_obj_pose = planner.plan_trajectory(
         init_obj_pose,
         grasp_data["pregrasp_qpos"],
         grasp_data["grasp_qpos"],
@@ -62,95 +53,82 @@ def _single_validation(params):
     )
 
     if scene_cfg["task"]["type"] == "force_closure":
-        eval_func = sim_env.test_fc
+        eval_func = sim_env.eval_fc
     else:
-        eval_func = sim_env.test_move
+        eval_func = sim_env.eval_move
 
-    succ_flag, real_qpos_lst = eval_func(
-        qpos_lst,
-        ctype_lst,
-        extdir_lst,
+    succ_flag, real_state_qpos, real_ctrl_qpos = eval_func(
+        ctrl_qpos,
+        ctrl_type,
+        ext_dir,
         target_obj_pose,
-        op_config.trans_thre,
-        op_config.angle_thre,
+        op_cfg.trans_thre,
+        op_cfg.rot_thre,
     )
 
-    sim_env.debug_postprocess(
-        save_path=input_npy_path.replace(data_dir, configs.debug_dir).replace(
-            ".npy", ".gif"
-        )
-    )
+    sim_env.save_debug(input_path.replace(data_dir, cfg.debug_dir))
 
     if succ_flag:
-        if configs.adding_arm:
-            output_npy_path = input_npy_path.replace(data_dir, configs.succ_traj_dir)
-            os.makedirs(os.path.dirname(output_npy_path), exist_ok=True)
+        if not cfg.skip_traj:
+            output_path = input_path.replace(data_dir, cfg.succ_traj_dir)
+            os.makedirs(os.path.dirname(output_path), exist_ok=True)
             np.save(
-                output_npy_path,
-                {"scene_path": grasp_data["scene_path"], "traj_qpos": real_qpos_lst},
+                output_path,
+                {
+                    "scene_path": grasp_data["scene_path"],
+                    "traj_state_qpos": real_state_qpos,
+                    "traj_ctrl_qpos": real_ctrl_qpos,
+                },
             )
         else:
-            output_npy_path = input_npy_path.replace(data_dir, configs.succ_grasp_dir)
-            os.makedirs(os.path.dirname(output_npy_path), exist_ok=True)
+            output_path = input_path.replace(data_dir, cfg.succ_grasp_dir)
+            os.makedirs(os.path.dirname(output_path), exist_ok=True)
             os.system(
-                f"ln -s {os.path.relpath(input_npy_path, os.path.dirname(output_npy_path))} {output_npy_path}"
+                f"ln -s {os.path.relpath(input_path, os.path.dirname(output_path))} {output_path}"
             )
 
-        if (
-            configs.update_template is not False
-            and grasp_data["evolution_num"] <= configs.max_template_evolution
-        ):
-            tmp_npy_path = input_npy_path.replace(data_dir, configs.new_template_dir)
-            if not os.path.exists(tmp_npy_path):
-                original_npy_path = input_npy_path.replace(data_dir, configs.grasp_dir)
-                os.makedirs(os.path.dirname(tmp_npy_path), exist_ok=True)
+        if cfg.tmpl_upd_mode != "disabled" and grasp_data["n_evo"] <= cfg.tmpl_max_evo:
+            tmpl_path = input_path.replace(data_dir, cfg.new_tmpl_dir)
+            if not os.path.exists(tmpl_path):
+                original_path = input_path.replace(data_dir, cfg.grasp_dir)
+                os.makedirs(os.path.dirname(tmpl_path), exist_ok=True)
                 os.system(
-                    f"ln -s {os.path.relpath(original_npy_path, os.path.dirname(tmp_npy_path))} {tmp_npy_path}"
+                    f"ln -s {os.path.relpath(original_path, os.path.dirname(tmpl_path))} {tmpl_path}"
                 )
 
-    return input_npy_path
+    return input_path
 
 
-def safe_validation(params):
-    try:
-        return _single_validation(params)
-    except Exception as e:
-        error_traceback = traceback.format_exc()
-        logging.info(f"{error_traceback}")
-        return params[0]
-
-
-def op_eval(configs):
-    data_dir = configs.traj_dir if configs.adding_arm else configs.grasp_dir
+def operate_eval(cfg):
+    data_dir = cfg.traj_dir if not cfg.skip_traj else cfg.grasp_dir
     input_path_lst = glob.glob(os.path.join(data_dir, "**/*.npy"), recursive=True)
-    if configs.debug_name is not None:
-        input_path_lst = [p for p in input_path_lst if configs.debug_name in p]
+    if cfg.debug_name is not None:
+        input_path_lst = [p for p in input_path_lst if cfg.debug_name in p]
 
-    logged_paths = []
-    if configs.skip and os.path.exists(configs.log_path):
-        with open(configs.log_path, "r") as f:
-            logged_paths = f.readlines()
-
-        logged_paths = [p.split("\n")[0] for p in logged_paths]
-        input_path_lst = list(set(input_path_lst).difference(set(logged_paths)))
+    logged_path_lst = []
+    if cfg.skip_done and os.path.exists(cfg.log_path):
+        with open(cfg.log_path, "r") as f:
+            logged_path_lst = f.readlines()
+        logged_path_lst = [p.split("\n")[0] for p in logged_path_lst]
+        input_path_lst = list(set(input_path_lst).difference(set(logged_path_lst)))
 
     logging.info(f"Find {len(input_path_lst)} grasp data")
 
     if len(input_path_lst) == 0:
         return
 
-    iterable_params = zip(input_path_lst, [configs] * len(input_path_lst))
-    if configs.n_worker == 1 or configs.debug_viewer:
-        for ip in iterable_params:
-            _single_validation(ip)
+    param_lst = zip(input_path_lst, [cfg] * len(input_path_lst))
+    if cfg.n_worker == 1 or cfg.debug_view:
+        for ip in param_lst:
+            _single_eval(ip)
     else:
-        with multiprocessing.Pool(processes=3 * configs.n_worker) as pool:
-            result_iter = pool.imap_unordered(safe_validation, iterable_params)
-            results = list(result_iter)
-            write_mode = "a" if configs.skip else "w"
-            with open(configs.log_path, write_mode) as f:
+        with multiprocessing.Pool(processes=3 * cfg.n_worker) as pool:
+            jobs = pool.imap_unordered(_single_eval, param_lst)
+            results = list(jobs)
+            write_mode = "a" if cfg.skip_done else "w"
+            with open(cfg.log_path, write_mode) as f:
                 f.write("\n".join(results) + "\n")
 
-    logging.info(f"Finish")
+    logging.info(f"Finish evaluation")
 
     return

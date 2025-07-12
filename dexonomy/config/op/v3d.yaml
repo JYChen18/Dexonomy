@@ -1,6 +1,6 @@
-max_num: 100
-data_type: succ_grasp # Choices: [init, grasp, succ_grasp, succ_traj, init_template, new_template]
-check_success:    # Choices: [True, False, None]
+n_max: 100
+data: succ_grasp # Choices: [init, grasp, succ_grasp, succ_traj, init_template, new_template]
+succ: null   # Choices: [True, False, None]
 
 hand:
   mode: visual  # Choices: [visual, collision]

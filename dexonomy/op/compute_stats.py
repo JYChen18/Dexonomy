@@ -6,7 +6,7 @@ import logging
 import matplotlib.pyplot as plt
 import torch
 
-from dexonomy.util.file_util import get_template_name_lst
+from dexonomy.util.file_util import get_template_names
 from dexonomy.util.torch_util import (
     torch_quaternion_to_matrix,
     torch_matrix_to_axis_angle,
@@ -37,7 +37,7 @@ def draw_obj_scale_fig(data_lst, save_path):
     return
 
 
-def get_obj_name_lst(path_lst, template_name):
+def get_obj_names(path_lst, template_name):
     obj_name_lst = []
     for p in path_lst:
         obj_name = os.path.dirname(p).split(template_name + "/")[1]
@@ -45,7 +45,7 @@ def get_obj_name_lst(path_lst, template_name):
     return list(set(obj_name_lst))
 
 
-def read_data(npy_path):
+def read_paths(npy_path):
     data = np.load(npy_path, allow_pickle=True).item()
     return data
 
@@ -87,94 +87,81 @@ def get_diversity(data_lst):
     return explained_variance
 
 
-def op_stats(configs):
-    if not os.path.exists(configs.init_dir):
-        tmp_lst = get_template_name_lst(None, configs.grasp_dir)
+def operate_stat(cfg):
+    if not os.path.exists(cfg.init_dir) and os.path.exists(cfg.grasp_dir):
+        tmpl_names = get_template_names(None, cfg.grasp_dir)
     else:
-        tmp_lst = get_template_name_lst(None, configs.init_template_dir)
+        tmpl_names = get_template_names(None, cfg.init_tmpl_dir)
 
     # Hand template summary
-    for template_name in tmp_lst:
-        all_init_lst = glob(
-            os.path.join(configs.init_dir, template_name, "**/*.npy"), recursive=True
-        )
-        all_grasp_lst = glob(
-            os.path.join(configs.grasp_dir, template_name, "**/*.npy"), recursive=True
-        )
-        all_succ_grasp_lst = glob(
-            os.path.join(configs.succ_grasp_dir, template_name, "**/*.npy"),
+    for tn in tmpl_names:
+        init_paths = glob(os.path.join(cfg.init_dir, tn, "**/*.npy"), recursive=True)
+        grasp_paths = glob(os.path.join(cfg.grasp_dir, tn, "**/*.npy"), recursive=True)
+        succ_grasp_paths = glob(
+            os.path.join(cfg.succ_grasp_dir, tn, "**/*.npy"),
             recursive=True,
         )
-        all_traj_lst = glob(
-            os.path.join(configs.traj_dir, template_name, "**/*.npy"), recursive=True
-        )
-        all_succ_traj_lst = glob(
-            os.path.join(configs.succ_traj_dir, template_name, "**/*.npy"),
+        traj_paths = glob(os.path.join(cfg.traj_dir, tn, "**/*.npy"), recursive=True)
+        succ_traj_paths = glob(
+            os.path.join(cfg.succ_traj_dir, tn, "**/*.npy"),
             recursive=True,
         )
 
         if (
-            len(all_succ_grasp_lst)
-            + len(all_succ_traj_lst)
-            + len(all_traj_lst)
-            + len(all_init_lst)
-            + len(all_grasp_lst)
+            len(succ_grasp_paths)
+            + len(succ_traj_paths)
+            + len(traj_paths)
+            + len(init_paths)
+            + len(grasp_paths)
             == 0
         ):
             continue
 
-        init_obj_lst = get_obj_name_lst(all_init_lst, template_name)
-        grasp_obj_lst = get_obj_name_lst(all_grasp_lst, template_name)
-        succ_grasp_obj_lst = get_obj_name_lst(all_succ_grasp_lst, template_name)
-        traj_obj_lst = get_obj_name_lst(all_traj_lst, template_name)
-        succ_traj_obj_lst = get_obj_name_lst(all_succ_traj_lst, template_name)
+        init_obj = get_obj_names(init_paths, tn)
+        grasp_obj = get_obj_names(grasp_paths, tn)
+        succ_grasp_obj = get_obj_names(succ_grasp_paths, tn)
+        traj_obj = get_obj_names(traj_paths, tn)
+        succ_traj_obj = get_obj_names(succ_traj_paths, tn)
 
-        if len(all_succ_grasp_lst) != 0 and (
-            configs.op.scale_fig or configs.op.diversity or configs.op.contact_number
-        ):
-            with multiprocessing.Pool(processes=configs.n_worker) as pool:
-                result_iter = pool.imap_unordered(read_data, all_succ_grasp_lst)
-                data_lst = list(result_iter)
+        if len(succ_grasp_paths) != 0 and (cfg.op.obj_scale or cfg.op.diversity):
+            with multiprocessing.Pool(processes=cfg.n_worker) as pool:
+                jobs = pool.imap_unordered(read_paths, succ_grasp_paths)
+                data_lst = list(jobs)
 
-            if configs.op.scale_fig:
+            if cfg.op.obj_scale:
                 save_path = os.path.join(
-                    os.path.dirname(configs.log_path), template_name + "_objscale.png"
+                    os.path.dirname(cfg.log_path), tn + "_objscale.png"
                 )
                 draw_obj_scale_fig(data_lst, save_path)
 
-            if configs.op.diversity:
+            if cfg.op.diversity:
                 pca_eigenvalue = get_diversity(data_lst)
 
-            if configs.op.contact_number:
-                average_contact_number = np.mean(
-                    [d["contact_number"] for d in data_lst]
-                )
-
+        traj1 = len(succ_grasp_paths) if len(succ_grasp_paths) > 0 else len(grasp_paths)
+        traj2 = len(grasp_obj) if len(grasp_obj) > 0 else len(succ_grasp_obj)
         header = "{:<20} | {:<10} | {:<10} | {:<10} | {:<10} | {:<10}".format(
-            template_name, "Init", "SynGrasp", "EvalGrasp", "SynTraj", "EvalTraj"
+            tn, "Init", "SynGrasp", "EvalGrasp", "SynTraj", "EvalTraj"
         )
         success_line = "{:<20} | {:<10} | {:<10} | {:<10} | {:<10} | {:<10}".format(
             "Grasp:",
-            f"{len(all_init_lst)}",
-            f"{len(all_grasp_lst)},{100 * len(all_grasp_lst) / max(1, len(all_init_lst)):.0f}%",
-            f"{len(all_succ_grasp_lst)},{100 * len(all_succ_grasp_lst) / max(1, len(all_grasp_lst)):.0f}%",
-            f"{len(all_traj_lst)},{100 * len(all_traj_lst) / max(1, len(all_grasp_lst)):.0f}%",
-            f"{len(all_succ_traj_lst)},{100 * len(all_succ_traj_lst) / max(1, len(all_traj_lst)):.0f}%",
+            f"{len(init_paths)}",
+            f"{len(grasp_paths)},{100 * len(grasp_paths) / max(1, len(init_paths)):.0f}%",
+            f"{len(succ_grasp_paths)},{100 * len(succ_grasp_paths) / max(1, len(grasp_paths)):.0f}%",
+            f"{len(traj_paths)},{100 * len(traj_paths) / max(1, traj1):.0f}%",
+            f"{len(succ_traj_paths)},{100 * len(succ_traj_paths) / max(1, len(traj_paths)):.0f}%",
         )
         object_line = "{:<20} | {:<10} | {:<10} | {:<10} | {:<10} | {:<10}".format(
             "Object:",
-            f"{len(init_obj_lst)}",
-            f"{len(grasp_obj_lst)},{100 * len(grasp_obj_lst) / max(1, len(init_obj_lst)):.0f}%",
-            f"{len(succ_grasp_obj_lst)},{100 * len(succ_grasp_obj_lst) / max(1, len(grasp_obj_lst)):.0f}%",
-            f"{len(traj_obj_lst)},{100 * len(traj_obj_lst) / max(1, len(grasp_obj_lst)):.0f}%",
-            f"{len(succ_traj_obj_lst)},{100 * len(succ_traj_obj_lst) / max(1, len(traj_obj_lst)):.0f}%",
+            f"{len(init_obj)}",
+            f"{len(grasp_obj)},{100 * len(grasp_obj) / max(1, len(init_obj)):.0f}%",
+            f"{len(succ_grasp_obj)},{100 * len(succ_grasp_obj) / max(1, len(grasp_obj)):.0f}%",
+            f"{len(traj_obj)},{100 * len(traj_obj) / max(1, traj2):.0f}%",
+            f"{len(succ_traj_obj)},{100 * len(succ_traj_obj) / max(1, len(traj_obj)):.0f}%",
         )
 
         logging.info("-" * 65)
         logging.info(header)
         logging.info(success_line)
         logging.info(object_line)
-        if configs.op.diversity:
+        if cfg.op.diversity:
             logging.info(f"Diversity: {pca_eigenvalue}")
-        if configs.op.contact_number:
-            logging.info(f"Contact Number: {average_contact_number}")

@@ -19,35 +19,37 @@ from dexonomy.util.np_util import (
 from dexonomy.util.file_util import load_scene_cfg
 
 
-def sample_init_pose(tm_obj: trimesh.Trimesh, init_point_num, init_inplane_num):
+def sample_init_pose(
+    tm_obj: trimesh.Trimesh, n_init_point: int, n_init_inplane: int
+) -> tuple[np.ndarray, np.ndarray]:
     # Sample contact points and corresponding normals
-    points, tri_ind = trimesh.sample.sample_surface_even(tm_obj, init_point_num)
-    more_point_num = init_point_num - points.shape[0]
-    if more_point_num > 0:
-        new_points, new_tri_ind = trimesh.sample.sample_surface(tm_obj, more_point_num)
+    points, tri_ind = trimesh.sample.sample_surface_even(tm_obj, n_init_point)
+    n_remain = n_init_point - points.shape[0]
+    if n_remain > 0:
+        new_points, new_tri_ind = trimesh.sample.sample_surface(tm_obj, n_remain)
         points = np.concatenate([points, new_points], axis=0)
         tri_ind = np.concatenate([tri_ind, new_tri_ind], axis=0)
     normals = -tm_obj.face_normals[tri_ind]
 
-    # Contact to pose
+    # Contact point and normal to relative pose
     rot_base = np_normal_to_rot(normals)[None]
-    angles = np.linspace(-np.pi, np.pi, init_inplane_num)
+    angles = np.linspace(-np.pi, np.pi, n_init_inplane)
     delta_rot = np_axis_angle_rotation("X", angles).reshape(-1, 1, 3, 3)
-    sampled_rot = (rot_base @ delta_rot).reshape(-1, 3, 3)
-    sampled_trans = np.tile(points, (init_inplane_num, 1))
+    rot_o2c_init = (rot_base @ delta_rot).reshape(-1, 3, 3)
+    trans_o2c_init = np.tile(points, (n_init_inplane, 1))
 
-    return sampled_rot, sampled_trans
+    return rot_o2c_init, trans_o2c_init
 
 
 class ObjSampleDataset(Dataset):
 
-    def __init__(self, init_point_num, init_inplane_num, cfg_path, cfg_num, mass):
-        self.init_point_num = init_point_num
-        self.init_inplane_num = init_inplane_num
+    def __init__(self, n_init_point, n_init_inplane, cfg_path, n_cfg, mass):
+        self.n_init_point = n_init_point
+        self.n_init_inplane = n_init_inplane
         self.mass = mass
         self.path_lst = np.random.permutation(sorted(glob(cfg_path)))
-        if cfg_num is not None and cfg_num > 0:
-            self.path_lst = self.path_lst[:cfg_num]
+        if n_cfg is not None and n_cfg > 0:
+            self.path_lst = self.path_lst[:n_cfg]
 
         logging.info(f"Object number: {len(self.path_lst)}")
         return
@@ -66,17 +68,17 @@ class ObjSampleDataset(Dataset):
             obj_info = obj_info["part_info"][part_name]
         elif obj_info["type"] != "rigid_object":
             raise NotImplementedError(
-                f"Unsupported interest object type: {obj_info['type']}"
+                f"Unsupported target object type: {obj_info['type']}"
             )
         tm_obj = trimesh.load(obj_info["file_path"], force="mesh")
         obj_scale = obj_info["scale"]
         obj_pose = np_array32(obj_info["pose"])
 
-        sampled_rot, sampled_trans = sample_init_pose(
-            tm_obj, self.init_point_num, self.init_inplane_num
+        rot_o2c_init, trans_o2c_init = sample_init_pose(
+            tm_obj, self.n_init_point, self.n_init_inplane
         )
 
-        wf_ext_center = obj_center = (
+        ext_center = obj_center = (
             tq.rotate_vector(tm_obj.center_mass * obj_scale, obj_pose[3:])
             + obj_pose[:3]
         )
@@ -85,42 +87,42 @@ class ObjSampleDataset(Dataset):
             move_direction = np.cross(
                 scene_cfg["task"]["axis"], obj_center - scene_cfg["task"]["pos"]
             )
-            wf_ext_wrench = np.concatenate(
+            ext_wrench = np.concatenate(
                 [move_direction * obj_mass, move_direction * 0.0]
             )
         elif scene_cfg["task"]["type"] == "slide":
-            wf_ext_wrench = np.concatenate(
+            ext_wrench = np.concatenate(
                 [scene_cfg["task"]["axis"] * obj_mass, scene_cfg["task"]["axis"] * 0.0]
             )
         elif (
             scene_cfg["task"]["type"] == "force_closure"
             or scene_cfg["task"]["type"] == "keyframe"
         ):
-            wf_ext_wrench = np.zeros(6)
+            ext_wrench = np.zeros(6)
         else:
             raise NotImplementedError(
                 f"Unsupported task type: {scene_cfg['task']['type']}. Avaiable choices: 'hinge', 'slide', 'force_closure', 'keyframe'."
             )
 
-        collision_plane = None
+        col_plane = None
         if "virtual_plane" in obj_info:
-            collision_plane = np_array32(obj_info["virtual_plane"])
+            col_plane = np_array32(obj_info["virtual_plane"])
         else:
             for obj in scene_cfg["scene"].values():
                 if obj["type"] == "plane":
-                    collision_plane = np_array32(obj["pose"])
+                    col_plane = np_array32(obj["pose"])
 
         return {
             "scene_cfg": scene_cfg,
             "scene_path": scene_cfg_path,
-            "collision_plane": collision_plane,
-            "collision_mesh": (obj_name, tm_obj),
+            "col_plane": col_plane,
+            "col_mesh": (obj_name, tm_obj),
             "obj_scale": np_array32(obj_scale),
-            "wf_sof_pose": obj_pose,
-            "wf_ext_center": np_array32(wf_ext_center),
-            "wf_ext_wrench": np_array32(wf_ext_wrench),
-            "sampled_rot": np_array32(sampled_rot),
-            "sampled_trans": np_array32(sampled_trans),
+            "pose_w2so": obj_pose,
+            "ext_center": np_array32(ext_center),
+            "ext_wrench": np_array32(ext_wrench),
+            "rot_o2c_init": np_array32(rot_o2c_init),
+            "trans_o2c_init": np_array32(trans_o2c_init),
         }
 
 
@@ -128,33 +130,35 @@ def _customized_collate_fn(list_data):
     mesh_lst = []
     scene_cfg_lst = []
     scene_path_lst = []
-    no_plane = list_data[0]["collision_plane"] is None
+    no_col_plane = list_data[0]["col_plane"] is None
     for i, data in enumerate(list_data):
-        if no_plane:
+        if no_col_plane:
             assert (
-                data.pop("collision_plane") is None
+                data.pop("col_plane") is None
             ), "Do not support unbatchable collision planes"
-        mesh_lst.append(data.pop("collision_mesh"))
+        mesh_lst.append(data.pop("col_mesh"))
         scene_cfg_lst.append(data.pop("scene_cfg"))
         scene_path_lst.append(data.pop("scene_path"))
     ret_data = default_collate(list_data)
-    ret_data["collision_mesh"] = mesh_lst
+    ret_data["col_mesh"] = mesh_lst
     ret_data["scene_cfg"] = scene_cfg_lst
     ret_data["scene_path"] = scene_path_lst
+    if no_col_plane:
+        ret_data["col_plane"] = None
     return ret_data
 
 
-def get_object_dataloader(configs, n_worker):
+def get_object_dataloader(cfg, n_worker):
     dataset = ObjSampleDataset(
-        init_point_num=configs.init_point_num,
-        init_inplane_num=configs.init_inplane_num,
-        cfg_path=configs.cfg_path,
-        cfg_num=configs.cfg_num,
-        mass=configs.mass,
+        n_init_point=cfg.n_init_point,
+        n_init_inplane=cfg.n_init_inplane,
+        cfg_path=cfg.cfg_path,
+        n_cfg=cfg.n_cfg,
+        mass=cfg.mass,
     )
     dataloader = DataLoader(
         dataset,
-        batch_size=configs.batch_size,
+        batch_size=cfg.batch_size,
         num_workers=n_worker,
         shuffle=False,
         collate_fn=_customized_collate_fn,

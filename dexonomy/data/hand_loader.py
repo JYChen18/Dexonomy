@@ -22,17 +22,17 @@ from dexonomy.sim import MuJoCo_VisEnv, HandCfg
 from dexonomy.util.file_util import load_yaml
 
 
-class HandTemplateLibrary:
+class HandTemplateLoader:
     def __init__(
         self,
         xml_path,
-        skeleton_path,
-        template_name,
-        init_template_dir,
-        new_template_dir,
+        skt_path,
+        tmpl_name,
+        init_tmpl_dir,
+        new_tmpl_dir,
         max_data_path=100,
         max_data_buffer=1024,
-        num_workers=4,
+        n_worker=4,
     ):
         # Producer components
         self.data_path_list = []
@@ -40,17 +40,17 @@ class HandTemplateLibrary:
         self.data_path_condition = threading.Condition(self.data_path_lock)
 
         # Consumer components
-        self.consumer_pool = ThreadPoolExecutor(max_workers=num_workers)
+        self.consumer_pool = ThreadPoolExecutor(max_workers=n_worker)
 
         # Buffer components
         self.data_buffer = {
             "hand_path": [],
             "grasp_qpos": [],
-            "nf_hf_rot": [],
-            "nf_hf_trans": [],
-            "nf_hc": [],
-            "hf_hsk": [],
-            "evolution_num": [],
+            "rot_c2h": [],
+            "trans_c2h": [],
+            "hand_cpn_c": [],
+            "hand_skt_h": [],
+            "n_evo": [],
         }
 
         self.buffer_lock = threading.Lock()
@@ -58,33 +58,29 @@ class HandTemplateLibrary:
         # Control flags
         self.running = False
         self.producer_thread = None
-        self.num_workers = num_workers
+        self.n_worker = n_worker
         self.max_data_path = max_data_path
         self.max_data_buffer = max_data_buffer
 
         # Hand informations
         self.xml_path = xml_path
-        self.init_template_dir = init_template_dir
-        self.new_template_dir = new_template_dir
-        self.template_name = template_name
-        assert os.path.exists(os.path.join(init_template_dir, template_name + ".npy"))
+        self.init_tmpl_dir = init_tmpl_dir
+        self.new_tmpl_dir = new_tmpl_dir
+        self.tmpl_name = tmpl_name
+        assert os.path.exists(os.path.join(init_tmpl_dir, tmpl_name + ".npy"))
 
         # Read and pre-process skeleton informations
-        hand_skeleton_dict = load_yaml(skeleton_path)
-        kinematic = MuJoCo_VisEnv(hand_cfg=HandCfg(xml_path=xml_path))
-        self.hand_skeleton = []
-        self.hand_sk_body_id = []
-        for k, v in hand_skeleton_dict.items():
-            self.hand_skeleton.extend(v)
-            self.hand_sk_body_id.extend(
-                [kinematic.body_id_dict[kinematic.sim_cfg.hand_prefix + k]] * len(v)
-            )
-        self.hand_skeleton = np_array32(self.hand_skeleton)
-        self.hand_sk_body_id = np.array(self.hand_sk_body_id)
+        skt_dict = load_yaml(skt_path)
+        vis_env = MuJoCo_VisEnv(hand_cfg=HandCfg(xml_path=xml_path))
+        self.skt_data, self.skt_bid = [], []
+        for k, v in skt_dict.items():
+            self.skt_data.extend(v)
+            self.skt_bid.extend([vis_env.get_body_id(k)] * len(v))
+        self.skt_data, self.skt_bid = np_array32(self.skt_data), np.array(self.skt_bid)
 
         # Pre-read the initial template
         hand_data = self._load_data(
-            kinematic, os.path.join(init_template_dir, template_name + ".npy")
+            vis_env, os.path.join(init_tmpl_dir, tmpl_name + ".npy")
         )
         for k in self.data_buffer.keys():
             self.data_buffer[k].append(
@@ -93,9 +89,9 @@ class HandTemplateLibrary:
                 else hand_data[k]
             )
         self.extra_info = {
-            "hand_template_name": template_name,
-            "hand_contact_body_names": hand_data["hand_contact_body_names"],
-            "necessary_contact_body_names": hand_data["necessary_contact_body_names"],
+            "tmpl_name": tmpl_name,
+            "hand_cbody": hand_data["hand_cbody"],
+            "required_cbody": hand_data["required_cbody"],
         }
         self.start()
         return
@@ -113,7 +109,7 @@ class HandTemplateLibrary:
         self.producer_thread.start()
 
         # Start consumer threads
-        for _ in range(self.num_workers):
+        for _ in range(self.n_worker):
             self.consumer_pool.submit(self._update_data_buffer)
 
     def stop(self):
@@ -135,15 +131,15 @@ class HandTemplateLibrary:
         """Producer thread that generates data path lists to read"""
         while self.running:
             # Get all available data path
-            if self.new_template_dir is None:
+            if self.new_tmpl_dir is None:
                 template_lst = []
             else:
                 template_lst = glob(
-                    os.path.join(self.new_template_dir, self.template_name, "**/*.npy"),
+                    os.path.join(self.new_tmpl_dir, self.tmpl_name, "**/*.npy"),
                     recursive=True,
                 )
             template_lst.append(
-                os.path.join(self.init_template_dir, self.template_name + ".npy")
+                os.path.join(self.init_tmpl_dir, self.tmpl_name + ".npy")
             )
 
             # Remove existing data path. NOTE: If there are workers loading data, it may generate repeat or miss path. But the problem is not severe.
@@ -156,17 +152,17 @@ class HandTemplateLibrary:
             # Add new data path and notify workers
             with self.data_path_condition:
                 if len(self.data_path_list) <= self.max_data_path:
-                    new_data_num = min(
+                    n_new = min(
                         len(template_lst), self.max_data_path - len(self.data_path_list)
                     )
-                    self.data_path_list.extend(template_lst[:new_data_num])
-                    self.data_path_condition.notify(new_data_num)
+                    self.data_path_list.extend(template_lst[:n_new])
+                    self.data_path_condition.notify(n_new)
 
             time.sleep(1.0)  # Control production rate
 
     def _update_data_buffer(self):
         """Consumer thread that load data and stores results in buffer"""
-        kinematic = MuJoCo_VisEnv(hand_cfg=HandCfg(xml_path=self.xml_path))
+        vis_env = MuJoCo_VisEnv(hand_cfg=HandCfg(xml_path=self.xml_path))
         while self.running:
             data_path = None
 
@@ -180,7 +176,7 @@ class HandTemplateLibrary:
 
             if data_path:
                 try:
-                    hand_data = self._load_data(kinematic, data_path)
+                    hand_data = self._load_data(vis_env, data_path)
                     with self.buffer_lock:
                         if len(self.data_buffer["hand_path"]) == self.max_data_buffer:
                             for k in self.data_buffer.keys():
@@ -199,26 +195,25 @@ class HandTemplateLibrary:
                     error_traceback = traceback.format_exc()
                     logging.error(f"(Hand Loader) {error_traceback}")
 
-    def _load_data(self, kinematic: MuJoCo_VisEnv, data_path: str):
+    def _load_data(self, vis_env: MuJoCo_VisEnv, data_path: str):
         hand_data = np.load(data_path, allow_pickle=True).item()
         hand_data["grasp_qpos"] = hand_data["grasp_qpos"].squeeze()
-        xmat, xpos = kinematic.forward_kinematics(hand_data["grasp_qpos"][7:])
-        body_xmat = xmat[self.hand_sk_body_id]
-        body_xpos = xpos[self.hand_sk_body_id]
-        hand_data["hf_hsk"] = (
-            np.reshape(self.hand_skeleton, (-1, 2, 3)) @ body_xmat.transpose(0, 2, 1)
-            + body_xpos[:, None, :]
+        xmat, xpos = vis_env.forward_kinematics(hand_data["grasp_qpos"][7:])
+        skt_xmat, skt_xpos = xmat[self.skt_bid], xpos[self.skt_bid]
+        hand_data["hand_skt_h"] = (
+            np.reshape(self.skt_data, (-1, 2, 3)) @ skt_xmat.transpose(0, 2, 1)
+            + skt_xpos[:, None, :]
         ).reshape(-1, 6)
 
-        hr = tq.quat2mat(hand_data["grasp_qpos"][3:7]).astype(np.float32)
-        ht = hand_data["grasp_qpos"][:3]
-        hf_hc = np_inv_transform_points(hand_data["hand_worldframe_contacts"], hr, ht)
-        init_idx = np.random.randint(low=0, high=len(hf_hc))
-        nf_hf_rot = np_normal_to_rot(hf_hc[init_idx, 3:].reshape(1, 3)).squeeze(0).T
-        nf_hf_trans = -nf_hf_rot @ hf_hc[init_idx, :3]
-        hand_data["nf_hf_rot"] = nf_hf_rot
-        hand_data["nf_hf_trans"] = nf_hf_trans
-        hand_data["nf_hc"] = np_transform_points(hf_hc, nf_hf_rot, nf_hf_trans)
+        h_r = tq.quat2mat(hand_data["grasp_qpos"][3:7]).astype(np.float32)
+        h_t = hand_data["grasp_qpos"][:3]
+        h_cpn_h = np_inv_transform_points(hand_data["hand_cpn_w"], h_r, h_t)
+        init_idx = np.random.randint(low=0, high=len(h_cpn_h))
+        rot_c2h = np_normal_to_rot(h_cpn_h[init_idx, 3:].reshape(1, 3)).squeeze(0).T
+        trans_c2h = -rot_c2h @ h_cpn_h[init_idx, :3]
+        hand_data["rot_c2h"] = rot_c2h
+        hand_data["trans_c2h"] = trans_c2h
+        hand_data["hand_cpn_c"] = np_transform_points(h_cpn_h, rot_c2h, trans_c2h)
         hand_data["hand_path"] = data_path
         return hand_data
 
@@ -238,15 +233,15 @@ class HandTemplateLibrary:
 
 
 @hydra.main(config_path="../config", config_name="base", version_base=None)
-def test_hand_library(configs):
-    template_name = os.listdir(configs.init_template_dir)[-1].split(".npy")[0]
-    hand_library = HandTemplateLibrary(
-        xml_path=configs.hand.xml_path,
-        skeleton_path=configs.hand_skeleton_path,
-        template_name=template_name,
-        init_template_dir=configs.init_template_dir,
-        new_template_dir=configs.new_template_dir,
-        num_workers=configs.n_worker,
+def test_hand_library(cfg):
+    tmpl_name = os.listdir(cfg.init_tmpl_dir)[-1].split(".npy")[0]
+    hand_library = HandTemplateLoader(
+        xml_path=cfg.hand.xml_path,
+        skt_path=cfg.hand_skt_path,
+        tmpl_name=tmpl_name,
+        init_tmpl_dir=cfg.init_tmpl_dir,
+        new_tmpl_dir=cfg.new_tmpl_dir,
+        n_worker=cfg.n_worker,
     )
     try:
         for _ in range(20):

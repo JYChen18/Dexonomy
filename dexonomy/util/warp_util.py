@@ -1,5 +1,12 @@
 import warp as wp
 import torch
+import trimesh
+import numpy as np
+
+from dexonomy.util.torch_util import (
+    torch_inv_transform_points,
+    torch_quaternion_to_matrix,
+)
 
 
 def init_warp(quiet=True):
@@ -13,7 +20,7 @@ init_warp()
 
 @wp.kernel
 def get_mesh_lineseg_coll(
-    line_segments: wp.array(dtype=wp.vec3),
+    line_seg: wp.array(dtype=wp.vec3),
     mesh_idx: wp.array(dtype=wp.uint64),
     num_lines: wp.int32,
     output_valid_idx: wp.array(dtype=bool),
@@ -24,8 +31,8 @@ def get_mesh_lineseg_coll(
 
     m_id = mesh_idx[tid]
     for line_id in range(num_lines):
-        start = line_segments[tid * num_lines * 2 + line_id * 2]
-        end = line_segments[tid * num_lines * 2 + line_id * 2 + 1]
+        start = line_seg[tid * num_lines * 2 + line_id * 2]
+        end = line_seg[tid * num_lines * 2 + line_id * 2 + 1]
         delta = end - start
         max_t = wp.length(delta)
         dir = wp.normalize(delta)
@@ -34,29 +41,6 @@ def get_mesh_lineseg_coll(
             output_valid_idx[tid] = False
             break
     return
-
-
-def MeshLineSegCollision(
-    line_segments,
-    mesh_idx,
-    output_valid_idx,
-):
-    b = line_segments.shape[0]
-    num_lines = line_segments.shape[1] // 2
-    wp.launch(
-        kernel=get_mesh_lineseg_coll,
-        dim=b,
-        inputs=[
-            wp.from_torch(line_segments.view(-1, 3), dtype=wp.vec3),
-            wp.from_torch(mesh_idx, dtype=wp.uint64),
-            num_lines,
-        ],
-        outputs=[
-            wp.from_torch(output_valid_idx, dtype=wp.bool),
-        ],
-        stream=wp.stream_from_torch(line_segments.device),
-    )
-    return output_valid_idx
 
 
 @wp.kernel
@@ -187,3 +171,83 @@ class MeshQueryPoint(torch.autograd.Function):
         if ctx.needs_input_grad[0]:
             g_p = adj_points
         return g_p, None, None, None, None
+
+
+class WarpCollisionEnv:
+    def __init__(self, device: torch.device):
+        self.device = device
+        self._wp_dev = wp.torch.device_from_torch(device)
+        self._wp_cache = {}  # Mesh cache
+        self._col_plane = None
+        self._col_mesh = torch.ones(0, dtype=torch.int64, device=device)
+        self._out_points = torch.zeros(0, dtype=torch.float32, device=device)
+        self._out_normals = torch.zeros(0, dtype=torch.float32, device=device)
+        self._adj_points = torch.zeros(0, dtype=torch.float32, device=device)
+        return
+
+    def load(
+        self,
+        col_plane: torch.Tensor | None,
+        col_mesh: list[tuple[str, trimesh.Trimesh]],
+    ):
+        mesh_id = []
+        for cm in col_mesh:
+            obj_name, tm_obj = cm[0], cm[1]
+            if obj_name not in self._wp_cache:
+                v = wp.array(tm_obj.vertices, dtype=wp.vec3, device=self._wp_dev)
+                f = wp.array(np.ravel(tm_obj.faces), dtype=int, device=self._wp_dev)
+                vn = wp.array(tm_obj.vertex_normals, dtype=wp.vec3, device=self._wp_dev)
+                self._wp_cache[obj_name] = wp.Mesh(points=v, indices=f, velocities=vn)
+            mesh_id.append(self._wp_cache[obj_name].id)
+        self._col_mesh = torch.tensor(mesh_id, dtype=torch.int64, device=self.device)
+        self._col_plane = col_plane
+        return
+
+    def query_point(self, points: torch.Tensor):
+        if self._out_points.shape != points.shape:
+            self._out_points = torch.zeros(points.shape, device=self.device)
+            self._out_normals = torch.zeros(points.shape, device=self.device)
+            self._adj_points = torch.zeros(points.shape, device=self.device)
+
+        obj_cp_o, obj_cn_o = MeshQueryPoint.apply(
+            points.contiguous(),
+            self._out_points,
+            self._out_normals,
+            self._adj_points,
+            self._col_mesh,
+        )
+        return obj_cp_o, obj_cn_o
+
+    def check_mesh(self, line_seg: torch.Tensor, parallel_id: torch.Tensor):
+        b, n_lines = line_seg.shape[0], line_seg.shape[1] // 2
+        out_valid_idx = torch.ones(b, dtype=torch.bool, device=self.device)
+        wp.launch(
+            kernel=get_mesh_lineseg_coll,
+            dim=b,
+            inputs=[
+                wp.from_torch(line_seg.view(-1, 3), dtype=wp.vec3),
+                wp.from_torch(self._col_mesh[parallel_id], dtype=wp.uint64),
+                n_lines,
+            ],
+            outputs=[
+                wp.from_torch(out_valid_idx, dtype=wp.bool),
+            ],
+            stream=wp.stream_from_torch(line_seg.device),
+        )
+        return out_valid_idx
+
+    def check_plane(
+        self, line_seg: torch.Tensor, parallel_id: torch.Tensor, plane_thre: float
+    ):
+        out_valid_idx = torch.ones(
+            line_seg.shape[0], dtype=torch.bool, device=self.device
+        )
+        if self._col_plane is not None:
+            col_plane = self._col_plane[parallel_id]
+            pf_hsk = torch_inv_transform_points(
+                line_seg,
+                torch_quaternion_to_matrix(col_plane[..., 3:]),
+                col_plane[..., :3].view(-1, 1, 3),
+            )
+            out_valid_idx = (pf_hsk[..., -1] > plane_thre).min(dim=-1)[0]
+        return out_valid_idx

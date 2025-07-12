@@ -3,32 +3,30 @@ device: "cuda:0"
 
 object:
   batch_size: 10
-  init_point_num: 1024
-  init_inplane_num: 8
-  cfg_path: ${asset_root}/object/DGN_5k_keyframe/scene_cfg/**/tabletop_ur10e/**.npy
-  cfg_num: 100
+  n_init_point: 1024  # number of initial point sampling
+  n_init_inplane: 8  # number of initial inplane rotation sampling
+  cfg_path: ${asset_root}/object/DGN_5k/scene_cfg/**/floating/**.npy
+  n_cfg: 100  # number of scene cfg to run
   mass: ${obj_mass}
 
 matcher:
-  opt_iter: 100
-  filter:
-    final_num: 10
-    min_ratio: 0.5
-    max_ratio: 0.9
-    loss_based:
-      enable: True
-      pos_thre: 0.001
-      normal_thre: 0.3
-    collision_based: 
-      enable: True
-    qp_based: 
-      enable: True
-      batched: True
-      max_batch_size: 30000
-      threshold: 0.01
-      miu_coef: [0.2, 0.001]    # This should be small to leave more high-quality grasps
-    fps_based:
-      enable: True
-    
+  opt_step: 100
+
+filter:
+  general:
+    n_final: 10  # number of final grasps to keep
+    min_ratio: 0.5  # min ratio of valid grasps to keep for each filter
+    max_ratio: 0.9  # max ratio of valid grasps to keep for each filter
+  loss:
+    pos_thre: 0.001  # max distance between hand contacts and object contacts, unit: m
+    normal_thre: 0.3  # max angle between hand contacts and object contacts, unit: rad
+  collision: 
+    plane_thre: 0.02  # min distance between hand skeleton and plane, unit: m
+  qp: 
+    batch_size: 30000
+    thre: 0.01  # max qp error for a valid grasp
+    miu_coef: [0.2, 0.001]  # tangential and torsional friction coefficient
+  fps:
+    dist_thre: null
 
 cust_log_dir: ${log_dir}

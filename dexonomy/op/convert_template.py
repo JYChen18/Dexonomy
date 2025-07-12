@@ -1,4 +1,3 @@
-from typing import List
 import os
 from glob import glob
 import logging
@@ -6,7 +5,7 @@ import multiprocessing
 
 import numpy as np
 
-from dexonomy.util.file_util import load_yaml
+from dexonomy.util.file_util import load_yaml, safe_wrapper
 from dexonomy.sim import MuJoCo_VisEnv, HandCfg
 from dexonomy.util.np_util import (
     np_transform_points,
@@ -15,159 +14,134 @@ from dexonomy.util.np_util import (
 )
 
 
-def _single_anno2temp(params):
-    anno_path, hand_keypoint, hand_body_group, configs = (
-        params[0],
-        params[1],
-        params[2],
-        params[3],
-    )
+@safe_wrapper
+def _single_anno2tmpl(param):
+    anno_path, hand_kp, hand_bgroup, cfg = param[0], param[1], param[2], param[3]
     anno_data = load_yaml(anno_path)
-    qpos_lst = np_array32(anno_data["qpos"])
-    kin = MuJoCo_VisEnv(
-        hand_cfg=HandCfg(xml_path=configs.hand.xml_path),
-        vis_mesh_mode="collision",
-    )
-    xmat, xpos = kin.forward_kinematics(qpos_lst)
+    qpos = np_array32(anno_data["qpos"])
+    vis_env = MuJoCo_VisEnv(hand_cfg=HandCfg(cfg.hand.xml_path), vis_mode="collision")
+    xmat, xpos = vis_env.forward_kinematics(qpos)
 
     if "contact" not in anno_data or anno_data["contact"] is None:
         anno_data["contact"] = {}
 
     # Convert dict to list
     contact_lst = []
-    for body_name, contact_anno in anno_data["contact"].items():
-        if isinstance(contact_anno, List):
+    for b_name, c_anno in anno_data["contact"].items():
+        if isinstance(c_anno, list):
             # Judge whether it is a list of points or a single point list
-            if (
-                len(contact_anno) == 6
-                and sum([isinstance(c, float) for c in contact_anno]) > 0
-            ):
-                contact_lst.append((body_name, contact_anno))
+            if len(c_anno) == 6 and sum([isinstance(c, float) for c in c_anno]) > 0:
+                contact_lst.append((b_name, c_anno))
             else:
-                for c in contact_anno:
-                    contact_lst.append((body_name, c))
+                for c in c_anno:
+                    contact_lst.append((b_name, c))
         else:
-            contact_lst.append((body_name, contact_anno))
+            contact_lst.append((b_name, c_anno))
 
     # Process contact list
-    hand_worldframe_contact = []
-    hand_contact_body_names = []
-    for body_name, contact_anno in contact_lst:
-        body_mesh = kin.body_mesh_dict[kin.sim_cfg.hand_prefix + body_name]
-        body_id = kin.body_id_dict[kin.sim_cfg.hand_prefix + body_name]
-        body_mat, body_pos = xmat[body_id], xpos[body_id]
-        if isinstance(contact_anno, List):  # Annotated directly in handframe
-            assert len(contact_anno) == 6
-            hwc = np_array32(contact_anno)
-            hbc = np_inv_transform_points(hwc, body_mat, body_pos)
+    hand_cpn_w, hand_cbody = [], []
+    for b_name, c_anno in contact_lst:
+        b_mesh, b_id = vis_env.get_body_mesh(b_name), vis_env.get_body_id(b_name)
+        b_mat, b_pos = xmat[b_id], xpos[b_id]
+        if isinstance(c_anno, list):  # Annotated directly in handframe
+            assert len(c_anno) == 6
+            h_cpn_w = np_array32(c_anno)
+            h_cpn_b = np_inv_transform_points(h_cpn_w, b_mat, b_pos)
         else:  # Annotated in bodyframe via keypoints
-            hbc = np_array32(hand_keypoint[body_name][contact_anno])
-            hwc = np_transform_points(hbc, body_mat, body_pos)
+            h_cpn_b = np_array32(hand_kp[b_name][c_anno])
+            h_cpn_w = np_transform_points(h_cpn_b, b_mat, b_pos)
 
-        _, distance, _ = body_mesh.nearest.on_surface([hbc[:3]])
-        if distance > 0.002:
-            min_body_name = body_name
-            min_point2mesh_dist = distance
-            for bn, bm in kin.body_mesh_dict.items():
-                new_body_id = kin.body_id_dict[bn]
-                new_body_mat, new_body_pos = xmat[new_body_id], xpos[new_body_id]
-                new_hbc = np_inv_transform_points(hwc, new_body_mat, new_body_pos)
-                _, new_dist, _ = bm.nearest.on_surface([new_hbc[:3]])
-                if new_dist < min_point2mesh_dist:
-                    min_point2mesh_dist = new_dist
-                    min_body_name = bn
-            if min_point2mesh_dist > 0.002:
+        _, dist, _ = b_mesh.nearest.on_surface([h_cpn_b[:3]])
+        if dist > 0.002:
+            min_b_name = b_name
+            min_dist = dist
+            for bn in vis_env.get_all_body_names():
+                new_b_id = vis_env.get_body_id(bn)
+                new_b_mesh = vis_env.get_body_mesh(bn)
+                new_b_mat, new_b_pos = xmat[new_b_id], xpos[new_b_id]
+                new_h_cpn_b = np_inv_transform_points(h_cpn_w, new_b_mat, new_b_pos)
+                _, new_dist, _ = new_b_mesh.nearest.on_surface([new_h_cpn_b[:3]])
+                if new_dist < min_dist:
+                    min_dist = new_dist
+                    min_b_name = bn
+            if min_dist > 0.002:
                 error_str = (
-                    "The annotated contact point is far from the collision mesh!\n"
+                    "The annotated contact point is far from all collision meshes!\n"
                 )
             else:
                 error_str = "The annotated contact point seems to be inconsistent with the body name!\n"
-            error_str += " " * 10 + f"Template path: {anno_path}\n"
-            error_str += (
-                " " * 10
-                + f"Annotated body name: {body_name}, Point2body distance: {distance};\n"
+            logging.error(
+                f"{error_str}\n \
+                    Template path: {anno_path}\n \
+                    Annotated body name: {b_name}, Point2body distance: {dist};\n \
+                    Nearest body name: {min_b_name}, Point2body distance: {min_dist}.\n"
             )
-            error_str += (
-                " " * 10
-                + f"Nearest body name: {min_body_name}, Point2body distance: {min_point2mesh_dist}.\n"
-            )
-            logging.error(error_str)
-        hand_worldframe_contact.append(hwc)
-        hand_contact_body_names.append(body_name)
+        hand_cpn_w.append(h_cpn_w)
+        hand_cbody.append(b_name)
 
-    if "necessary_contact_body_names" not in anno_data:
-        necessary_contact_body_names = []
-        for i in hand_body_group:
-            necessary_contact_body_names.append([])
+    if "required_cbody" not in anno_data:
+        required_cbody = []
+        for i in hand_bgroup:
+            required_cbody.append([])
             for j in i:
                 if j in anno_data["contact"].keys():
-                    necessary_contact_body_names[-1].append(j)
-            if len(necessary_contact_body_names[-1]) == 0:
-                necessary_contact_body_names.pop(-1)
+                    required_cbody[-1].append(j)
+            if len(required_cbody[-1]) == 0:
+                required_cbody.pop(-1)
     else:
-        necessary_contact_body_names = anno_data["necessary_contact_body_names"]
+        required_cbody = anno_data["required_cbody"]
         check_lst = []
-        for i in necessary_contact_body_names:
+        for i in required_cbody:
             for j in i:
                 assert j in anno_data["contact"].keys()
                 assert j not in check_lst
                 check_lst.append(j)
 
-    temp_data = {
-        "hand_template_name": os.path.basename(anno_path).removesuffix(".yaml"),
-        "grasp_qpos": np.concatenate([np_array32([0.0, 0, 0, 1, 0, 0, 0]), qpos_lst])[
-            None
-        ],
-        "hand_worldframe_contacts": (
-            np.stack(hand_worldframe_contact, axis=0)
-            if len(hand_worldframe_contact) > 0
-            else None
-        ),
-        "hand_contact_body_names": hand_contact_body_names,
-        "necessary_contact_body_names": necessary_contact_body_names,
-        "evolution_num": np_array32([0.0]),
+    tmpl_data = {
+        "tmpl_name": os.path.basename(anno_path).removesuffix(".yaml"),
+        "grasp_qpos": np.concatenate([np_array32([0, 0, 0, 1, 0, 0, 0]), qpos])[None],
+        "hand_cpn_w": np.stack(hand_cpn_w, axis=0) if len(hand_cpn_w) > 0 else None,
+        "hand_cbody": hand_cbody,
+        "required_cbody": required_cbody,
+        "n_evo": np_array32([0]),
     }
-    temp_path = anno_path.replace(
-        configs.raw_anno_dir, configs.init_template_dir
-    ).replace(".yaml", ".npy")
-    np.save(temp_path, temp_data)
-
+    tmpl_path = anno_path.replace(cfg.raw_anno_dir, cfg.init_tmpl_dir)
+    np.save(tmpl_path.replace(".yaml", ".npy"), tmpl_data)
     return
 
 
-def op_tmpl(configs):
+def operate_tmpl(cfg):
+    input_path_lst = glob(os.path.join(cfg.raw_anno_dir, "**.yaml"))
+    if cfg.debug_name is not None:
+        input_path_lst = [p for p in input_path_lst if cfg.debug_name in p]
+    n_input = len(input_path_lst)
+    logging.info(f"Find {n_input} annotations")
 
-    input_path_lst = glob(os.path.join(configs.raw_anno_dir, "**.yaml"))
-    if configs.debug_name is not None:
-        input_path_lst = [p for p in input_path_lst if configs.debug_name in p]
-    input_num = len(input_path_lst)
-    logging.info(f"Find {input_num} annotation")
-
-    if input_num == 0:
+    if n_input == 0:
         return
 
-    os.makedirs(configs.init_template_dir, exist_ok=True)
-    hand_body_group = load_yaml(configs.hand_body_group_path)["body_group"]
+    os.makedirs(cfg.init_tmpl_dir, exist_ok=True)
+    hand_bgroup = load_yaml(cfg.hand_bgroup_path)["body_group"]
 
-    hand_keypoint = None
-    if os.path.exists(configs.hand_keypoint_path):
-        hand_keypoint = load_yaml(configs.hand_keypoint_path)
-        if hand_keypoint is not None:
-            for k, v in hand_keypoint.items():
+    hand_kp = None
+    if os.path.exists(cfg.hand_kp_path):
+        hand_kp = load_yaml(cfg.hand_kp_path)
+        if hand_kp is not None:
+            for k, v in hand_kp.items():
                 if isinstance(v, str):
-                    hand_keypoint[k] = hand_keypoint[v]
+                    hand_kp[k] = hand_kp[v]
 
-    iterable_params = zip(
-        input_path_lst,
-        [hand_keypoint] * input_num,
-        [hand_body_group] * input_num,
-        [configs] * input_num,
+    param_lst = zip(
+        input_path_lst, [hand_kp] * n_input, [hand_bgroup] * n_input, [cfg] * n_input
     )
-    if configs.n_worker == 1:
-        for ip in iterable_params:
-            _single_anno2temp(ip)
+    if cfg.n_worker == 1:
+        for ip in param_lst:
+            _single_anno2tmpl(ip)
     else:
-        with multiprocessing.Pool(processes=configs.n_worker) as pool:
-            result_iter = pool.imap_unordered(_single_anno2temp, iterable_params)
-            results = list(result_iter)
+        with multiprocessing.Pool(processes=cfg.n_worker) as pool:
+            jobs = pool.imap_unordered(_single_anno2tmpl, param_lst)
+            results = list(jobs)
+
+    logging.info(f"Finish template conversion")
+
     return

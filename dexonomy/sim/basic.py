@@ -1,4 +1,3 @@
-from typing import List
 from dataclasses import dataclass
 
 
@@ -8,7 +7,7 @@ class HandCfg:
     freejoint: bool = False
     arm_flag: bool = False
     ee_name: str | None = None  # only useful when arm_flag=True
-    exclude_table_contact: List[str] | None = None  # only useful when arm_flag=True
+    skip_table_cbody: list[str] | None = None  # only useful when arm_flag=True
 
 
 @dataclass
@@ -21,4 +20,4 @@ class SimCfg:
     obj_prefix: str = "obj-"
     plane_prefix: str = "plane-"
     obj_freejoint: bool = True
-    friction_coef: tuple[float, float] = (0.0, 0.0)
+    miu_coef: tuple[float, float] = (0.0, 0.0)

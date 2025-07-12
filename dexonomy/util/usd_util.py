@@ -1,7 +1,6 @@
 # Standard Library
 from dataclasses import dataclass
 import os
-from typing import Dict, List, Optional, Union
 
 # Third Party
 import numpy as np
@@ -46,7 +45,7 @@ def create_view_matrix(position, target):
 
 @dataclass
 class Material:
-    color: List
+    color: list
     name: str = "1"
     metallic: float = 0.0
     roughness: float = 0.5
@@ -64,15 +63,15 @@ def set_geom_mesh_attrs(mesh_geom: UsdGeom.Mesh, obs: trimesh.Trimesh):
     a.AddScaleOp()
 
 
-class UsdHelper:
+class UsdStage:
     def __init__(
         self,
         name: str = "curobo_stage.usd",
         base_frame: str = "/world",
-        timesteps: Optional[int] = None,
+        timestep: int | None = None,
         dt: float = 0.02,
-        interpolation_steps: float = 1,
-    ) -> None:
+        interp_step: float = 1,
+    ):
         self.stage = Usd.Stage.CreateNew(name)
         UsdGeom.SetStageUpAxis(self.stage, "Z")
         UsdGeom.SetStageMetersPerUnit(self.stage, 1)
@@ -80,10 +79,10 @@ class UsdHelper:
         xform = self.stage.DefinePrim(base_frame, "Xform")
         self.stage.SetDefaultPrim(xform)
         self.dt = dt
-        self.interpolation_steps = interpolation_steps
-        if timesteps is not None:
+        self.interp_step = interp_step
+        if timestep is not None:
             self.stage.SetStartTimeCode(0)
-            self.stage.SetEndTimeCode((timesteps - 1) * self.interpolation_steps)
+            self.stage.SetEndTimeCode((timestep - 1) * self.interp_step)
             self.stage.SetTimeCodesPerSecond((24))
 
         # camera_radius = 150
@@ -95,7 +94,7 @@ class UsdHelper:
         #     camera_view_matrix = create_view_matrix(camera_pos[i], camera_lookat)
         #     self.add_camera(str(i), camera_view_matrix)
 
-    def add_camera(self, id, cam_view_m):
+    def add_camera(self, id: str, cam_view_m: np.ndarray):
         camera_path = f"/Camera_{id}"
         camera_prim = self.stage.DefinePrim(camera_path, f"Camera")
         camera = UsdGeom.Camera(self.stage.GetPrimAtPath(camera_path))
@@ -104,15 +103,15 @@ class UsdHelper:
         camera.GetHorizontalApertureAttr().Set(20)
         camera.GetVerticalApertureAttr().Set(20)
 
-    def add_subroot(self, root="/world", sub_root="obstacles"):
+    def add_subroot(self, root: str = "/world", sub_root: str = "obstacles"):
         xform = self.stage.DefinePrim(os.path.join(root, sub_root), "Xform")
 
-    def add_meshlst_to_stage(
+    def add_mesh_lst(
         self,
-        mesh_lst: List[trimesh.Trimesh],
-        name_lst: List[str],
-        pose_lst: List[List],
-        vis_time_lst: List[tuple[float, float]],
+        mesh_lst: list[trimesh.Trimesh],
+        name_lst: list[str],
+        pose_lst: list[list],
+        visible_time_lst: list[tuple[float, float]],
         base_frame: str = "/world",
         obstacles_frame: str = "obstacles",
         material: Material | None = None,
@@ -121,10 +120,8 @@ class UsdHelper:
         full_path = os.path.join(base_frame, obstacles_frame)
 
         prim_path = [
-            self.add_mesh_to_stage(
-                m, name, full_path, visible_time=vt, material=material
-            )
-            for vt, name, m in zip(vis_time_lst, name_lst, mesh_lst)
+            self.add_mesh(m, name, full_path, visible_time=vt, material=material)
+            for vt, name, m in zip(visible_time_lst, name_lst, mesh_lst)
         ]
 
         for i, i_val in enumerate(prim_path):
@@ -135,13 +132,13 @@ class UsdHelper:
                 position = Gf.Vec3f(p[i][0], p[i][1], p[i][2])
                 quat = Gf.Quatf(p[i][3], *p[i][4:-1])
                 scale = Gf.Vec3f(p[i][-1], p[i][-1], p[i][-1])
-                real_t = (t + vis_time_lst[i][0]) * self.interpolation_steps
+                real_t = (t + visible_time_lst[i][0]) * self.interp_step
                 form[0].Set(time=real_t, value=position)
                 form[1].Set(time=real_t, value=quat)
                 form[2].Set(time=real_t, value=scale)
         return
 
-    def add_mesh_to_stage(
+    def add_mesh(
         self,
         mesh: trimesh.Trimesh,
         mesh_name: str,
@@ -191,25 +188,21 @@ class UsdHelper:
 
     def add_material(
         self,
-        material_name: str,
-        object_path: str,
-        color: List[float],
+        name: str,
+        obj_path: str,
+        color: list[float],
         obj_prim: Usd.Prim,
-        material_roughness: float,
-        material_metallic: float,
+        roughness: float,
+        metallic: float,
     ):
-        mat_path = os.path.join(object_path, material_name)
+        mat_path = os.path.join(obj_path, name)
         material_usd = UsdShade.Material.Define(self.stage, mat_path)
         pbrShader = UsdShade.Shader.Define(
             self.stage, os.path.join(mat_path, "PbrShader")
         )
         pbrShader.CreateIdAttr("UsdPreviewSurface")
-        pbrShader.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(
-            material_roughness
-        )
-        pbrShader.CreateInput("metallic", Sdf.ValueTypeNames.Float).Set(
-            material_metallic
-        )
+        pbrShader.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(roughness)
+        pbrShader.CreateInput("metallic", Sdf.ValueTypeNames.Float).Set(metallic)
         pbrShader.CreateInput("specularColor", Sdf.ValueTypeNames.Color3f).Set(
             Gf.Vec3f(color[:3])
         )

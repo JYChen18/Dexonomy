@@ -168,7 +168,7 @@ class _RELUQP:
         self.adaptive_rho_tolerance = 5
         self.setup_rhos(nc)
 
-        self.max_iter = 1000
+        self.max_step = 1000
         self.eps_abs = 1e-3
         self.check_interval = 25
         self.sigma = 1e-6 * torch.eye(nx, dtype=torch.float32, device=device).unsqueeze(
@@ -295,7 +295,7 @@ class _RELUQP:
         rho_ind = self.rho_ind
         rho = self.rhos[rho_ind]
 
-        for k in range(1, self.max_iter + 1):
+        for k in range(1, self.max_step + 1):
             self.output = _RELU(
                 input=self.output,
                 W=self.W_ks,
