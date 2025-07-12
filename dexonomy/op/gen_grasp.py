@@ -98,8 +98,10 @@ def _single_grasp(param):
     sim_env.reset_qpos(grasp_data["grasp_qpos"][0])
     sim_env.set_obj_margin(grasp_cfg.cdist)
 
-    grasp_filter = GraspFilter(grasp_cfg.filter, sim_env, "grasp")
-    pregrasp_filter = GraspFilter(pregrasp_cfg.filter, sim_env, "pregrasp")
+    grasp_filter = GraspFilter(grasp_cfg.filter, sim_env, f"{input_path} grasp")
+    pregrasp_filter = GraspFilter(
+        pregrasp_cfg.filter, sim_env, f"{input_path} pregrasp"
+    )
 
     # Generate grasp qpos
     hand_cbody, obj_cpn_w = grasp_data["hand_cbody"], grasp_data["obj_cpn_w"]

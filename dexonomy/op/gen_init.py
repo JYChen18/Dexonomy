@@ -238,7 +238,7 @@ class HandObjMatcher:
 
         h_cpn_w = torch_transform_points(h_cpn_o, rot_w2so, trans_w2so, obj_scale)
         o_cp_w = torch_transform_points(o_cp_o, rot_w2so, trans_w2so, obj_scale)
-        o_cn_w = torch_transform_points(o_cn_o, rot_w2so, trans_w2so, obj_scale)
+        o_cn_w = torch_transform_points(o_cn_o, rot_w2so)
 
         rot_c2h = tmpl_sample["rot_c2h"]
         trans_c2h = tmpl_sample["trans_c2h"].unsqueeze(-2)

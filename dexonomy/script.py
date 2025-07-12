@@ -83,11 +83,6 @@ def run_traj(global_cfg_str, traj_cfg_str, eval_log_path):
 
 @hydra.main(config_path="config", config_name="base", version_base=None)
 def main(cfg: DictConfig):
-
-    if os.path.exists(cfg.succ_grasp_dir) or os.path.exists(cfg.succ_traj_dir):
-        logging.error(f"The exp_name {cfg.exp_name} is already used!")
-        exit(1)
-
     cmd_cfg = {"global": [], "init": [], "grasp": [], "eval": [], "traj": []}
     for argv in sys.argv[1:]:
         if "+init." in argv:
@@ -120,9 +115,10 @@ def main(cfg: DictConfig):
     tmpl_names = get_template_names(cfg.tmpl_name, cfg.init_tmpl_dir)
     n_tmpl, n_gpu = len(tmpl_names), len(cfg.init_gpu)
     assert n_tmpl <= n_gpu, f"Template number: {n_tmpl}; GPU number: {n_gpu}"
-    assert (
-        len(set(cfg.init_gpu).intersection(set(cfg.traj_gpu))) == 0
-    ), f"init GPU should be different with traj GPU! init: {cfg.init_gpu}; traj: {cfg.traj_gpu}"
+    if not cfg.skip_traj:
+        assert (
+            len(set(cfg.init_gpu).intersection(set(cfg.traj_gpu))) == 0
+        ), f"init GPU should be different with traj GPU! init: {cfg.init_gpu}; traj: {cfg.traj_gpu}"
 
     log_dir_dir = os.path.dirname(cfg.log_dir)
     grasp_eval_log = os.path.join(log_dir_dir, "eval_0", "main.log")
