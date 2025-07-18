@@ -89,9 +89,8 @@ class MuJoCo_BaseEnv:
             self._data.moment_rowadr,
             self._data.moment_colind,
         )
-        self._hand_qpos2ctrl_mat = self._hand_qpos2ctrl_mat[
-            ..., : self._model.nv - self._obj_nv
-        ]
+        self._hand_nv = self._model.nv - self._obj_nv
+        self._hand_qpos2ctrl_mat = self._hand_qpos2ctrl_mat[..., : self._hand_nv]
 
         # For IK-based ctrl
         if hand_cfg.arm_flag and hand_cfg.ee_name is not None:
@@ -182,6 +181,9 @@ class MuJoCo_BaseEnv:
             if g.contype != 0:
                 g.density = density
                 g.margin = self._cfg.obj_margin
+                for k in ["contype", "conaffinity"]:
+                    if k in kwargs:
+                        setattr(g, k, kwargs[k])
         for m in child_spec.meshes:
             m.scale *= scale
         attach_frame = self._spec.worldbody.add_frame()
@@ -196,7 +198,9 @@ class MuJoCo_BaseEnv:
             self._obj_nv += 6
         return
 
-    def _add_articulated_object(self, name, xml_path, pose, scale, fix_root, **kwargs):
+    def _add_articulated_object(
+        self, name, xml_path, pose, qpos, scale, fix_root, **kwargs
+    ):
         child_spec = mujoco.MjSpec.from_file(xml_path)
         for m in child_spec.meshes:
             m.file = os.path.join(os.path.dirname(xml_path), child_spec.meshdir, m.file)
@@ -204,12 +208,15 @@ class MuJoCo_BaseEnv:
         for g in child_spec.geoms:
             if g.contype != 0:
                 g.margin = self._cfg.obj_margin
+                for k in ["contype", "conaffinity"]:
+                    if k in kwargs:
+                        setattr(g, k, kwargs[k])
         for m in child_spec.meshes:
             m.scale *= scale
 
-        if not self._cfg.obj_freejoint:
-            for j in child_spec.joints:
-                j.delete()
+        # if not self._cfg.obj_freejoint:
+        #     for j in child_spec.joints:
+        #         j.delete()
         for a in child_spec.actuators:
             a.delete()
 
@@ -224,8 +231,8 @@ class MuJoCo_BaseEnv:
                 child_world.add_freejoint(name=f"{name}_freejoint")
                 self._obj_init_qpos.extend(pose)
                 self._obj_nv += 6
-            self._obj_init_qpos.extend([0] * len(child_spec.joints))
-            self._obj_nv += len(child_spec.joints)
+        self._obj_init_qpos.extend(qpos)
+        self._obj_nv += len(child_spec.joints)
         return
 
     def _add_plane(
@@ -491,8 +498,9 @@ class MuJoCo_BaseEnv:
     def save_debug(self, save_path=None) -> None:
         if self._debug_render is not None:
             assert save_path is not None
+            save_path = save_path.replace(".npy", ".gif")
             os.makedirs(os.path.dirname(save_path), exist_ok=True)
-            imageio.mimsave(save_path.replace(".npy", ".gif"), self._debug_img)
+            imageio.mimsave(save_path, self._debug_img)
             logging.info(f"Save GIF to {save_path}")
 
         if self._debug_view is not None:
@@ -606,14 +614,14 @@ class MuJoCo_OptEnv(MuJoCo_BaseEnv):
                 b_id,
                 self._data.qfrc_applied,
             )
-        self.set_ctrl(self._data.qpos, skip_mocap=True)
+        self.set_ctrl(self.get_hand_qpos(), skip_mocap=True)
         self._data.qvel[:] = 0
         return np_array32(contact_diffs)
 
     def keep_hand_stable(self) -> None:
         self._data.qfrc_applied[:] = 0
         self._data.xfrc_applied[:] = 0
-        self.set_ctrl(self._data.qpos, skip_mocap=True)
+        self.set_ctrl(self.get_hand_qpos(), skip_mocap=True)
         self._data.qvel[:] = 0
         return
 
@@ -647,14 +655,16 @@ class MuJoCo_OptEnv(MuJoCo_BaseEnv):
         delta_qpos = np.copy(self._data.qfrc_applied)
         self._data.qfrc_applied[:] = 0
         actuator_gainprm = self._model.actuator_gainprm[:, 0]
-        for i in range(len(delta_qpos)):
+        for i in range(self._hand_nv):
             actuator_id = np.where(self._hand_qpos2ctrl_mat[:, i] != 0)[0]
             if len(actuator_id) > 0:
                 delta_qpos[i] /= (
                     actuator_gainprm[actuator_id[0]]
                     * self._hand_qpos2ctrl_mat[actuator_id[0]].sum()
                 )
-        squeeze_qpos = np.concatenate([grasp_qpos[:7], grasp_qpos[7:] + delta_qpos[6:]])
+        squeeze_qpos = np.concatenate(
+            [grasp_qpos[:7], grasp_qpos[7:] + delta_qpos[6 : self._hand_nv]]
+        )
         return squeeze_qpos
 
 
@@ -677,14 +687,22 @@ class MuJoCo_EvalEnv(MuJoCo_BaseEnv):
         sim_cfg: SimCfg = MuJoCo_EvalCfg(),
         debug_render: bool = False,
         debug_view: bool = True,
+        hard: bool = False,
     ):
+        self.hard = hard
         super().__init__(hand_cfg, scene_cfg, sim_cfg, debug_render, debug_view)
         return
 
     def _set_friction(self, miu_coef):
         self._spec.option.cone = mujoco.mjtCone.mjCONE_ELLIPTIC
-        self._spec.option.noslip_iterations = 2
-        self._spec.option.impratio = 10
+        if self.hard:
+            noslip, impratio = 0, 1
+            miu_coef[0] *= 0.5
+            miu_coef[1] *= 0.1
+        else:
+            noslip, impratio = 2, 10
+        self._spec.option.noslip_iterations = noslip
+        self._spec.option.impratio = impratio
         for g in self._spec.geoms:
             g.friction[:2] = miu_coef
             g.condim = 4
@@ -823,7 +841,7 @@ class MuJoCo_VisEnv(MuJoCo_BaseEnv):
         return
 
     def forward_kinematics(self, qpos) -> tuple[np.ndarray, np.ndarray]:
-        self._data.qpos = qpos
+        self._data.qpos = np.concatenate([qpos, self._obj_init_qpos], axis=-1)
         mujoco.mj_kinematics(self._model, self._data)
         xmat = np_array32(self._data.xmat).reshape(-1, 3, 3)
         xpos = np_array32(self._data.xpos)

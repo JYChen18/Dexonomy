@@ -40,6 +40,7 @@ def _single_eval(param):
         sim_cfg=MuJoCo_EvalCfg(miu_coef=op_cfg.miu_coef),
         debug_render=cfg.debug_render,
         debug_view=cfg.debug_view,
+        hard=op_cfg.hard,
     )
 
     init_obj_pose = np.copy(sim_env.get_active_obj_pose())

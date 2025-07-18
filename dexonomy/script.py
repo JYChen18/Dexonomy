@@ -47,7 +47,12 @@ def check_finish_eval(log_path):
 
 
 def run_init(global_cfg_str, init_cfg_str, tmpl_name, device_id, log_id, log_path):
-    init_cmd = f"CUDA_VISIBLE_DEVICES={device_id} dexrun op=init tmpl_name={tmpl_name} log_id={log_id} {global_cfg_str} {init_cfg_str}"
+    if "init_gpu=" in global_cfg_str:
+        prefix, suffix = global_cfg_str.split("init_gpu=", 1)  # Split at "init_gpu="
+        new_global_cfg_str = f"{prefix}init_gpu=[{device_id}]{suffix.split(']')[1]}"
+    else:
+        new_global_cfg_str = global_cfg_str + f" 'init_gpu=[{device_id}]'"
+    init_cmd = f"dexrun op=init tmpl_name={tmpl_name} log_id={log_id} {new_global_cfg_str} {init_cfg_str}"
     logging.info(init_cmd)
     count = 0
     while not check_finish_init(log_path) and count < 10:
@@ -118,7 +123,7 @@ def main(cfg: DictConfig):
     if not cfg.skip_traj:
         assert (
             len(set(cfg.init_gpu).intersection(set(cfg.traj_gpu))) == 0
-        ), f"init GPU should be different with traj GPU! init: {cfg.init_gpu}; traj: {cfg.traj_gpu}"
+        ), f"init_gpu should be different with traj_gpu! init: {cfg.init_gpu}; traj: {cfg.traj_gpu}"
 
     log_dir_dir = os.path.dirname(cfg.log_dir)
     grasp_eval_log = os.path.join(log_dir_dir, "eval_0", "main.log")

@@ -1,11 +1,11 @@
 epoch: 5
-device: "cuda:0"
+device: "cuda"  # or "cpu"
 
 object:
   batch_size: 10
   n_init_point: 1024  # number of initial point sampling
   n_init_inplane: 8  # number of initial inplane rotation sampling
-  cfg_path: ${asset_root}/object/DGN_5k/scene_cfg/**/floating/**.npy
+  cfg_path: ${asset_root}/object/DGN_5k/scene_cfg/**/floating/*.npy
   n_cfg: 100  # number of scene cfg to run
   mass: ${obj_mass}
 

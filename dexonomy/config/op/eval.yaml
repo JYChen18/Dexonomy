@@ -1,4 +1,5 @@
 miu_coef: [0.6, 0.02]  # tangential and torsional friction coefficient
+hard: False # True for more strict test: noslip=0, impratio=1, miu[0]*=0.5, miu[1]*=0.1
 trans_thre: 0.05  # success threshold, unit: m
 rot_thre: 15  # success threshold, unit: degree
 

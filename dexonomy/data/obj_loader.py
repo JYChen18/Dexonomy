@@ -47,7 +47,7 @@ class ObjSampleDataset(Dataset):
         self.n_init_point = n_init_point
         self.n_init_inplane = n_init_inplane
         self.mass = mass
-        self.path_lst = np.random.permutation(sorted(glob(cfg_path)))
+        self.path_lst = np.random.permutation(sorted(glob(cfg_path, recursive=True)))
         if n_cfg is not None and n_cfg > 0:
             self.path_lst = self.path_lst[:n_cfg]
 

@@ -277,7 +277,11 @@ class HandObjMatcher:
 def operate_init(cfg):
     op_cfg = cfg.op
     tmpl_name = get_template_names(cfg.tmpl_name, cfg.init_tmpl_dir)[0]  # only one
-    logging.info(f"Hand template name: {tmpl_name}")
+    assert op_cfg.device in ["cpu", "cuda"]
+    if op_cfg.device == "cuda":
+        torch.cuda.set_device(cfg.init_gpu[0])
+        op_cfg.device += f":{cfg.init_gpu[0]}"
+    logging.info(f"Template name: {tmpl_name}, device: {op_cfg.device}")
 
     obj_loader = get_object_dataloader(op_cfg.object, cfg.n_worker)
     coll_env = WarpCollisionEnv(op_cfg.device)
