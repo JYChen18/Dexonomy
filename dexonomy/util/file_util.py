@@ -38,6 +38,19 @@ def write_json(data: dict, file_path: str):
         json.dump(data, file, indent=1)
 
 
+def _get_template_from_prefix(prefix: str, all_tmpl_names: list[str]) -> str:
+    ret_name = None
+    for tc in all_tmpl_names:
+        if tc.startswith(prefix):
+            if ret_name is not None:
+                raise ValueError(
+                    f"Template name starting with {prefix} is not unique: {ret_name} {tc}"
+                )
+            ret_name = tc
+    assert ret_name is not None, f"Template name starting with {prefix} not found"
+    return ret_name
+
+
 def get_template_names(
     raw_input: omegaconf.listconfig.ListConfig | str | None, init_tmpl_dir: str
 ) -> list[str]:
@@ -45,12 +58,11 @@ def get_template_names(
     if raw_input is None:
         tmpl_names = all_tmpl_names
     elif isinstance(raw_input, omegaconf.listconfig.ListConfig):
-        tmpl_names = list(raw_input)
-        for tn in tmpl_names:
-            assert tn in all_tmpl_names
+        tmpl_names = []
+        for tn in list(raw_input):
+            tmpl_names.append(_get_template_from_prefix(tn, all_tmpl_names))
     elif isinstance(raw_input, str):
-        assert raw_input in all_tmpl_names
-        tmpl_names = [raw_input]
+        tmpl_names = [_get_template_from_prefix(raw_input, all_tmpl_names)]
     else:
         raise NotImplementedError(f"Unexpected raw input: {raw_input}")
     return tmpl_names

@@ -21,6 +21,7 @@ from dexonomy.data.obj_loader import get_object_dataloader
 from dexonomy.data.hand_loader import HandTemplateLoader
 from dexonomy.qp.qp_batched import get_qp_error_batched
 from dexonomy.qp.qp_single import ContactQP
+from dexonomy.util.file_util import get_template_names
 
 
 def valid_index_padding(
@@ -51,15 +52,16 @@ class InitFilter:
         self.cfg = cfg
         self.device = device
         self.coll_env = coll_env
+        self.valid_filter = []
+        for k in list(self.cfg.keys()):
+            if k != "general" and self.cfg[k] is not None:
+                self.valid_filter.append(k)
         return
 
     @torch.no_grad()
     def _wrapped_filter(self, data, filter_name, n_filter_remained):
         n_old = len(data["obj_id"])
-        if filter_name in self.cfg and self.cfg[filter_name] is not None:
-            valid_bool = eval(f"self._{filter_name}_filter")(data)
-        else:
-            valid_bool = torch.ones(n_old, dtype=torch.bool, device=self.device)
+        valid_bool = eval(f"self._{filter_name}_filter")(data)
         gen_cfg = self.cfg.general
         n_min = int(gen_cfg.n_final / ((1 - gen_cfg.min_ratio) ** n_filter_remained))
         n_max = int(gen_cfg.n_final / ((1 - gen_cfg.max_ratio) ** n_filter_remained))
@@ -68,6 +70,15 @@ class InitFilter:
             data[k] = v[valid_idx]
         logging.debug(f"{filter_name} filtering remain {len(valid_idx)} out of {n_old}")
         return data
+
+    def _pose_filter(self, data):
+        hand_rot = torch_quaternion_to_matrix(data["grasp_pose"][..., 3:7])
+        obj_direction = torch_normalize_vector(data["obj_pose"][:, :3])
+        finger_align = (hand_rot[:, :, 2] * obj_direction).sum(dim=-1)
+        valid_bool = (finger_align > self.cfg.pose.thre) | (
+            data["obj_pose"][:, :3].norm(dim=-1) < 0.1
+        )  # If object is not around the origin, the hand direction should be aligned with the object
+        return valid_bool
 
     def _loss_filter(self, data):
         valid_bool = (
@@ -180,10 +191,8 @@ class InitFilter:
         return valid_bool
 
     def forward(self, data: dict):
-        data = self._wrapped_filter(data, "loss", 3)
-        data = self._wrapped_filter(data, "collision", 2)
-        data = self._wrapped_filter(data, "qp", 1)
-        data = self._wrapped_filter(data, "fps", 0)
+        for i, f in enumerate(self.valid_filter):
+            data = self._wrapped_filter(data, f, len(self.valid_filter) - i - 1)
         return data
 
 
@@ -267,8 +276,8 @@ class HandObjMatcher:
 
 def operate_init(cfg):
     op_cfg = cfg.op
-    assert os.path.exists(os.path.join(cfg.init_tmpl_dir, cfg.tmpl_name + ".npy"))
-    logging.info(f"Hand template name: {cfg.tmpl_name}")
+    tmpl_name = get_template_names(cfg.tmpl_name, cfg.init_tmpl_dir)[0]  # only one
+    logging.info(f"Hand template name: {tmpl_name}")
 
     obj_loader = get_object_dataloader(op_cfg.object, cfg.n_worker)
     coll_env = WarpCollisionEnv(op_cfg.device)
@@ -279,7 +288,7 @@ def operate_init(cfg):
         tmpl_loader = HandTemplateLoader(
             xml_path=cfg.hand.xml_path,
             skt_path=cfg.hand_skt_path,
-            tmpl_name=cfg.tmpl_name,
+            tmpl_name=tmpl_name,
             init_tmpl_dir=cfg.init_tmpl_dir,
             new_tmpl_dir=cfg.new_tmpl_dir,
             max_data_buffer=cfg.tmpl_max_buf,
@@ -295,9 +304,9 @@ def operate_init(cfg):
                     for scene_cfg in obj_sample["scene_cfg"]:
                         check_dir = os.path.join(
                             cfg.init_dir,
-                            cfg.tmpl_name,
+                            tmpl_name,
                             scene_cfg["scene_id"],
-                            f"{eee}**.npy",
+                            f"{eee}*.npy",
                         )
                         if len(glob(check_dir)) > 0:
                             continue_flag = True

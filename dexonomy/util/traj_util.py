@@ -91,6 +91,14 @@ class TrajectoryPlanner(ABC):
             ext_fdir: list of external direction
             target_obj_pose: Target object pose after movement
         """
+        if len(pregrasp_qpos.shape) == 1:
+            pregrasp_qpos = pregrasp_qpos[None]
+        if len(grasp_qpos.shape) == 1:
+            grasp_qpos = grasp_qpos[None]
+        if len(squeeze_qpos.shape) == 1:
+            squeeze_qpos = squeeze_qpos[None]
+        if approach_qpos is not None and len(approach_qpos.shape) == 1:
+            approach_qpos = approach_qpos[None]
         self._add_approach_phase(approach_qpos)
         self._add_pregrasp_phase(pregrasp_qpos)
         self._add_grasp_phases(grasp_qpos, squeeze_qpos)

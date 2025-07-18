@@ -17,6 +17,8 @@ filter:
     n_final: 10  # number of final grasps to keep
     min_ratio: 0.5  # min ratio of valid grasps to keep for each filter
     max_ratio: 0.9  # max ratio of valid grasps to keep for each filter
+  pose:
+    thre: 0.1  # min dot product between finger direction and object position
   loss:
     pos_thre: 0.001  # max distance between hand contacts and object contacts, unit: m
     normal_thre: 0.3  # max angle between hand contacts and object contacts, unit: rad

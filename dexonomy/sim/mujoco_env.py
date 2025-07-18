@@ -1,7 +1,7 @@
 import os
-import pdb
 from dataclasses import dataclass, field
 import logging
+import time
 
 import imageio
 import trimesh
@@ -114,7 +114,7 @@ class MuJoCo_BaseEnv:
         if debug_view:
             self._debug_view = mujoco.viewer.launch_passive(self._model, self._data)
             self._debug_view.sync()
-            pdb.set_trace()
+            time.sleep(5.0)
 
         if debug_render:
             self._debug_render = mujoco.Renderer(self._model, 480, 640)
@@ -475,7 +475,6 @@ class MuJoCo_BaseEnv:
         return np.stack(real_state_qpos, axis=0), np.stack(real_ctrl_qpos, axis=0)
 
     def step_sim(self, substep) -> None:
-        mujoco.mj_forward(self._model, self._data)
         for _ in range(substep):
             mujoco.mj_step(self._model, self._data)
 
@@ -486,7 +485,7 @@ class MuJoCo_BaseEnv:
 
         if self._debug_view is not None:
             self._debug_view.sync()
-            pdb.set_trace()
+            time.sleep(1.0)
         return
 
     def save_debug(self, save_path=None) -> None:

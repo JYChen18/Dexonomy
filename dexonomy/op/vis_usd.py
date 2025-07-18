@@ -18,7 +18,7 @@ def _single_vusd(param):
 
     data = np.load(npy_path, allow_pickle=True).item()
 
-    if not cfg.skip_traj:
+    if op_cfg.data == "succ_traj":
         vis_env = MuJoCo_VisEnv(
             hand_cfg=HandCfg(cfg.hand.arm_hand.xml_path),
             scene_cfg=load_scene_cfg(data["scene_path"]),
@@ -35,7 +35,11 @@ def _single_vusd(param):
     all_body_name = vis_env.get_all_body_names()
     all_body_mesh = [vis_env.get_body_mesh(body_name) for body_name in all_body_name]
     all_body_pose = []
-    for qpos_name in op_cfg.qpos:
+    if isinstance(op_cfg.qpos, str):
+        qpos_name_lst = [op_cfg.qpos]
+    else:
+        qpos_name_lst = op_cfg.qpos
+    for qpos_name in qpos_name_lst:
         for qpos_id in range(data[f"{qpos_name}_qpos"].shape[0]):
             xmat, xpos = vis_env.forward_kinematics(data[f"{qpos_name}_qpos"][qpos_id])
             body_pose = []
