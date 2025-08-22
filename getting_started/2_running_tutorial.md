@@ -4,7 +4,7 @@ This tutorial provides a step-by-step guide for using the code and exploring its
 ## Template Preparation
 To convert annotated files into valid grasp templates, run:
 ```bash
-dexrun op=tmplhand=allegro
+dexrun op=tmpl hand=allegro
 ```
 - Results are saved to: `init_template_dir` (default: `assets/hand/allegro/init_template`) defined in [dexonomy/config/base.yaml](https://github.com/JYChen18/Dexonomy/blob/main/dexonomy/config/base.yaml#L23)
 
@@ -14,7 +14,7 @@ Grasp synthesis consists of three core ops: `init`, `grasp`, and `test`.
 ### 1. `init`: Optimize Object Pose
 This op samples and optimizes the object pose while keeping the hand fixed. It uses a single initial template on one GPU:
 ```bash
-dexrun op=init hand=allegro exp_name=first_try template_name=fingertip_small 'init_gpu=[0]' op.object.n_cfg=20
+dexrun op=init hand=allegro exp_name=first_try tmpl_name=fingertip_small 'init_gpu=[0]' op.object.n_cfg=20
 ```
 - Valid results are saved to: `init_dir` (default: `output/first_try_allegro/initialization`)
 - Logs are saved to: `log_dir` (default: `output/first_try_allegro/log/init_0/main.log`)
@@ -30,7 +30,7 @@ dexrun op=grasp hand=allegro exp_name=first_try
 
 #### Debugging Options
 ```bash
-dexrun op=grasp hand=allegro exp_name=first_try skip=False debug_name=core_bottle_523cddb320608c09a37f3fc191551700 debug_render=True hydra.verbose=true 
+dexrun op=grasp hand=allegro exp_name=first_try skip_done=False debug_name=core_bottle_523cddb320608c09a37f3fc191551700 debug_render=True hydra.verbose=true 
 ```
 
 - `debug_render=True`: Render the refinement process and save GIFs to `debug_dir` (default: `output/first_try_allegro/debug`). (Note: if there is an OpenGL-related error, try to first run `export MUJOCO_GL=egl`)
@@ -41,23 +41,23 @@ dexrun op=grasp hand=allegro exp_name=first_try skip=False debug_name=core_bottl
 
 All these options are configurable via [dexonomy/config/base.yaml](https://github.com/JYChen18/Dexonomy/blob/main/dexonomy/config/base.yaml)
 
-### 3. `test`: Test Synthesized Grasps
+### 3. `eval`: Evaluate Synthesized Grasps
 This op evaluates the synthesized grasps in simulation. Currently, it only supports MuJoCo on CPU.
 
 ```bash
-dexrun op=test hand=allegro exp_name=first_try
+dexrun op=eval hand=allegro exp_name=first_try
 ```
 - Successful grasps are saved to: `succ_grasp_dir` (default: `output/first_try_allegro/succ_grasp`)
 - New grasp templates are saved to: `new_template_dir` (default: `output/first_try_allegro/new_template`)
 - The same debugging options as in `grasp` are also available here.
 
 ### 4. `dexonomy.script`: Run All Three ops Together
-You can run all above three ops (`init`, `grasp`, `test`) together using:  
+You can run all above three ops (`init`, `grasp`, `eval`) together using:  
 ```bash
 dexsyn hand=allegro exp_name=first_try 'template_name=[fingertip_small,fingertip_mid,fingertip_large]' 'init_gpu=[5,6,7]'
 ```
 - `init` will distribute multiple templates across GPUs in `init_gpu` and run in parallel.
-- `grasp` and `test` will automatically check and run as soon as there are unprocessed data from previous stage.
+- `grasp` and `eval` will automatically check and run as soon as there are unprocessed data from previous stage.
 
 #### Customize Configurations
 You can override configuration parameters per op like:
@@ -78,8 +78,8 @@ dexrun op=vusd hand=allegro exp_name=first_try op.n_max=20 op.data=init op.succ=
 - `op.data`: Specifies which data directory to visualize. 
     - `init`: Initializations in `init_dir` (output of `init`)
     - `grasp`: Refined grasps in `grasp_dir` (output of `grasp`)
-    - `succ_grasp` (default): Successful grasps in `succ_grasp_dir` (output of `test`)
-    - `new_template`: Newly generated templates in `new_template_dir` (output of `test`)
+    - `succ_grasp` (default): Successful grasps in `succ_grasp_dir` (output of `eval`)
+    - `new_template`: Newly generated templates in `new_template_dir` (output of `eval`)
 - `op.succ`: Filters the data to visualize
     - `True`: Only include successful data.
     - `False`: Only include failed data.
