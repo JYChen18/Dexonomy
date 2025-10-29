@@ -1,0 +1,7 @@
+# @package _global_
+exp_name: bulb_allegro
+tmpl_name: fingertip_small
+
+obj_name: sem_LightBulb_8338a18d589c26d21c648623457982d0
+scale: 0.2
+instance_name: 2_44_grasp

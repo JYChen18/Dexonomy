@@ -1,4 +1,4 @@
-project_base_dir: /mnt/afs/ruanliangwang/Dexonomy-private
+project_base_dir: /mnt/home/ruanliangwang/Dexonomy-private
 
 asset_root: ${project_base_dir}/assets
 
@@ -8,6 +8,7 @@ tmpl_name: fingertip_small
 # obj_name: sem_ComputerMouse_c3814bd41e0273f621001e6372ea21bf
 # instance_name: 0_24_grasp
 obj_name: core_mug_bf2b5e941b43d030138af902bc222a59
+scale: 0.08
 # instance_name: 0_44_grasp
 instance_name: 2_41_grasp
 
