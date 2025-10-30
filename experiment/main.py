@@ -7,7 +7,9 @@ import warp as wp
 import warp.sim
 import warp.sim.render
 import torch
+import trimesh
 from qpsolvers import solve_qp
+from scipy.spatial.transform import Rotation as R
 from dexonomy.util.file_util import load_scene_cfg
 from dexonomy.util.np_util import np_normalize_vector, np_normal_to_rot
 
@@ -98,7 +100,6 @@ def init_sim_warp(cfg: dict, grasp_data: dict):
     qpos[3:6] = qpos[4:7]
     qpos[6] = w
     # don't know why, but this works
-    from scipy.spatial.transform import Rotation as R
     r = R.from_quat(qpos[3:7])
     r1 = R.from_rotvec(-np.array([0, 1, 0]) * np.pi / 2)
     r2 = R.from_rotvec(np.array([0, 0, 1]) * np.pi)
@@ -109,7 +110,40 @@ def init_sim_warp(cfg: dict, grasp_data: dict):
 
     wp.sim.eval_fk(model, model.joint_q, model.joint_qd, None, state)
     
-    return model, state
+    # load object mesh
+    scene_cfg = load_scene_cfg(grasp_data["scene_path"])["scene"]
+    assert len(scene_cfg) == 1, "Only single object is supported in warp sim."
+    obj_name, obj_cfg = list(scene_cfg.items())[0]
+    assert obj_cfg['type'] == 'rigid_object', "Only rigid object is supported in warp sim."
+    obj_mesh_tri = trimesh.load_mesh(obj_cfg['file_path'])
+    # scale and translate
+    obj_mesh_tri.apply_scale(obj_cfg['scale'])
+    obj_tran = obj_cfg['pose'][:3]
+    obj_rot = obj_cfg['pose'][3:]
+    obj_rot = R.from_quat([obj_rot[1], obj_rot[2], obj_rot[3], obj_rot[0]]).as_matrix()
+    obj_homo = np.eye(4)
+    obj_homo[:3, :3] = obj_rot
+    obj_homo[:3, 3] = obj_tran
+    obj_mesh_tri.apply_transform(obj_homo)
+    obj_normals = obj_mesh_tri.vertex_normals.astype(np.float32)
+    obj_mesh_verts = wp.array(
+        data=obj_mesh_tri.vertices,
+        dtype=wp.vec3,
+    )
+    obj_mesh_inds = wp.array(
+        data=obj_mesh_tri.faces.flatten(),
+        dtype=int,
+    )
+    obj_mesh_normals = wp.array(
+        data=obj_normals,
+        dtype=wp.vec3,
+    )
+    obj_mesh = wp.Mesh(points=obj_mesh_verts, 
+                       indices=obj_mesh_inds, 
+                       velocities=obj_mesh_normals)
+    obj_mesh.refit()
+    
+    return model, state, obj_mesh
 
 @wp.func
 def project_to_plane(p: wp.vec3, c: wp.vec3, n: wp.vec3) -> wp.vec3:
@@ -164,6 +198,18 @@ def get_closest_point(
         # out_normals[tid] = - wp.normalize(point)
     return
 
+@wp.kernel
+def compute_cp_warp(
+    hand_cpn_b: wp.array(dtype=float, ndim=2),
+    cbody_ids: wp.array(dtype=wp.int32),
+    body_q: wp.array(dtype=wp.transform),
+    cp_warp: wp.array(dtype=wp.vec3),
+):
+    tid = wp.tid()
+    cp_b = wp.vec3(hand_cpn_b[tid, 0], hand_cpn_b[tid, 1], hand_cpn_b[tid, 2])
+    id = cbody_ids[tid]
+    cp_warp[tid] = wp.transform_point(body_q[id], cp_b)
+
 # optimization target
 class QPSingle(torch.autograd.Function):
     # on cpu
@@ -198,9 +244,9 @@ class QPSingle(torch.autograd.Function):
         q_matrix = gravity @ flatten_param2force
         
         solution = solve_qp(
-            P=scipy.sparse.csc.csc_matrix(P_matrix),
+            P=scipy.sparse.csc_matrix(P_matrix),
             q=q_matrix,
-            G=scipy.sparse.csc.csc_matrix(G_matrix),
+            G=scipy.sparse.csc_matrix(G_matrix),
             h=h_matrix,
             solver=solver_type,
         )
@@ -213,16 +259,16 @@ class QPSingle(torch.autograd.Function):
             axis=-1
         )  # [n, 6]
         f_param_np = (E_matrix @ solution[..., None]).squeeze(axis=-1)  # [n, 6]
-        f_param = torch.from_numpy(f_param_np).to(points.device)
+        f_param = torch.from_numpy(f_param_np).to(torch.float32).to(points.device)
         
         wrench_error = np.linalg.norm(np.sum(contact_wrenches_np, axis=0) + gravity)
-        relative_pos = torch.from_numpy(relative_pos_np).to(points.device)
-        contact_wrenches = torch.from_numpy(contact_wrenches_np).to(points.device)
-        wrench_res = torch.sum(contact_wrenches, dim=0) + torch.from_numpy(gravity).to(points.device)  # (6,)
+        relative_pos = torch.from_numpy(relative_pos_np).to(torch.float32).to(points.device)
+        contact_wrenches = torch.from_numpy(contact_wrenches_np).to(torch.float32).to(points.device)
+        wrench_res = torch.sum(contact_wrenches, dim=0) + torch.from_numpy(gravity).to(torch.float32).to(points.device)  # (6,)
         
         ctx.save_for_backward(relative_pos, f_param, contact_wrenches, wrench_res)
         
-        return wrench_error
+        return torch.tensor(wrench_error, dtype=torch.float32, device=points.device)
     
     @staticmethod
     def backward(ctx, grad_output):
@@ -263,7 +309,7 @@ class QPSingleSolver:
 
         # - sum pressure <= -0.1
         G_matrix[-1, :] = -1.0
-        # remove this constraint
+        # remove this constraint by commenting out the following line
         # h_matrix[-1] = -1.0
 
         # https://mujoco.readthedocs.io/en/stable/_images/contact_frame.svg
@@ -278,13 +324,14 @@ class QPSingleSolver:
     
     def set_num_contact(self, num_contact):
         if self.num_contact != num_contact:
+            self.num_contact = num_contact
             self.G_matrix, self.h_matrix, self.E_matrix = self._build_constraint()
         self.num_contact = num_contact
 
     def solve(
         self,
-        pos,
-        normal,
+        pos: torch.Tensor,  # (N, 3)
+        normal: torch.Tensor,  # (N, 3)
         gravity,
         gravity_center,
     ):
@@ -300,22 +347,14 @@ class QPSingleSolver:
             self.solver_type,
         )
         return wrench_error
-        
 
-# simluation env for grasp optimization
-
-@hydra.main(config_path="config", config_name="base", version_base=None)
-def main(cfg: DictConfig):
-    set_logging(cfg.verbose)
-    data = load_instance(cfg)
-
-    sim_env = init_sim_mujoco(cfg, data)
+def init_local_contact(data: dict,
+                       env_mujoco: MuJoCo_OptQEnv,
+                       model_warp: wp.sim.Model
+                       ):
     hand_cbody, obj_cpn_w = data["hand_cbody"], data["obj_cpn_w"]
-    hand_cpn_b_np = sim_env.transform_cpn_w2b(hand_cbody, data["hand_cpn_w"])
+    hand_cpn_b_np = env_mujoco.transform_cpn_w2b(hand_cbody, data["hand_cpn_w"])
     hand_cpn_b = wp.array(hand_cpn_b_np, dtype=float)
-    
-    model_warp, state_warp = init_sim_warp(cfg, data)
-    cp_warp = warp.array(dtype=wp.vec3, shape=len(hand_cpn_b))
     
     cbody_ids = []
     body_name_warp = model_warp.body_name
@@ -325,35 +364,82 @@ def main(cfg: DictConfig):
         cbody_ids.append(cid)
     cbody_ids = wp.array(cbody_ids, dtype=wp.int32)
     
-    @wp.kernel
-    def compute_cp_warp(
-        hand_cpn_b: wp.array(dtype=float, ndim=2),
-        cbody_ids: wp.array(dtype=wp.int32),
-        body_q: wp.array(dtype=wp.transform),
-        cp_warp: wp.array(dtype=wp.vec3),
-    ):
-        tid = wp.tid()
-        cp_b = wp.vec3(hand_cpn_b[tid, 0], hand_cpn_b[tid, 1], hand_cpn_b[tid, 2])
-        id = cbody_ids[tid]
-        cp_warp[tid] = wp.transform_point(body_q[id], cp_b)
+    return hand_cpn_b, cbody_ids
+  
+def build_tape_graph():
+    tape = wp.Tape()
+    wp.capture_begin()
+    with tape:
+        pass
 
-    wp.launch(compute_cp_warp, dim=len(cbody_ids), inputs=(hand_cpn_b, cbody_ids, state_warp.body_q, cp_warp))
+@hydra.main(config_path="config", config_name="base", version_base=None)
+def main(cfg: DictConfig):
+    set_logging(cfg.verbose)
+    data = load_instance(cfg)
+
+    sim_env = init_sim_mujoco(cfg, data)
+    model_warp, state_warp, obj_warp = init_sim_warp(cfg, data)
+    hand_cpn_b, cbody_ids = init_local_contact(data, sim_env, model_warp)
+    
+    cp_h_warp = wp.array(dtype=wp.vec3, shape=len(hand_cpn_b), requires_grad=True) # contact points on hand
+    cp_o_warp = wp.array(dtype=wp.vec3, shape=len(hand_cpn_b), requires_grad=True) # contact points on object
+    cn_o_warp = wp.array(dtype=wp.vec3, shape=len(hand_cpn_b), requires_grad=True) # contact normals in world
+    cp_o_torch = wp.to_torch(cp_o_warp)
+    cn_o_torch = wp.to_torch(cn_o_warp)
     
     if logging.getLogger().getEffectiveLevel() == logging.DEBUG:
+        wp.launch(compute_cp_warp, 
+                  dim=len(cbody_ids), 
+                  inputs=(hand_cpn_b, cbody_ids, state_warp.body_q, cp_h_warp)
+                  )
         print("contact points from mujoco:")
         print(data["hand_cpn_w"][:, :3])
         print("contact points from warp:")
-        print(cp_warp)
+        print(cp_h_warp)
     
-    renderer = wp.sim.render.SimRenderer(model_warp, "debug_warp.usd", up_axis='Y')
+    qpsolver = QPSingleSolver(cfg.miu_coeff)
+
+    # single iteration begin
+    # rest state if any
+    #
+    tape = wp.Tape()
+    with tape:
+    # forward kinematics
+        wp.sim.eval_fk(model_warp, model_warp.joint_q, model_warp.joint_qd, None, state_warp)
+        # compute contact points in warp
+        wp.launch(compute_cp_warp, 
+                  dim=len(cbody_ids), 
+                  inputs=(hand_cpn_b, cbody_ids, state_warp.body_q, cp_h_warp),
+                  )
+        # compute closest points on object mesh
+        wp.launch(get_closest_point,
+                  dim=len(cp_h_warp),
+                  inputs=(cp_h_warp, wp.array([obj_warp.id], dtype=wp.uint64), 
+                          len(cp_h_warp), cp_o_warp, cn_o_warp),
+                  )
+    # foward to torch for QP solving
+    res = qpsolver.solve(
+        cp_o_torch,
+        cn_o_torch,
+        data['ext_wrench'],
+        data['ext_center'],
+    )
+    print(res)
+    res.backward()
+    tape.backward(grads={cp_o_warp: cp_o_warp.grad, cn_o_warp: cn_o_warp.grad})
+    print(f"grad_q: {model_warp.joint_q.grad}")
+    # single iteration end
+    
+    
+    renderer = wp.sim.render.SimRenderer(model_warp, "debug_warp.usd")
     # draw hand
     renderer.begin_frame(0.0)
     renderer.render(state_warp)
     # render contact points cp_warp
-    renderer.render_points('contact_points', cp_warp.numpy(), radius=0.01, colors=(1.0, 0.0, 0.0))
+    renderer.render_points('contact_points', cp_h_warp.numpy(), radius=0.01, colors=(1.0, 0.0, 0.0))
+    renderer.render_mesh('object', points=obj_warp.points.numpy(), indices=obj_warp.indices.numpy(), colors=(0.8, 0.8, 0.8))
     renderer.end_frame()
-    renderer.save()
-    
+    renderer.save()   
 
 if __name__ == "__main__":
     main()
