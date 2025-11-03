@@ -14,7 +14,10 @@ instance_name: 2_41_grasp
 
 miu_coeff: [0.1, 0]
 cdist: 1e-3 # for mujoco's collision detection
-ho_thre: 2e-3 
+ho_thre: 2e-3
+
+num_step: 20
+substep: 10
 
 verbose: 1 # 0: warning, 1: info, 2: debug
 

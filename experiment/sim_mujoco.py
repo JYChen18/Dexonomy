@@ -2,6 +2,7 @@ import os
 from dataclasses import dataclass, field
 import logging
 import time
+import quaternion
 
 import imageio
 import trimesh
@@ -617,6 +618,24 @@ class MuJoCo_OptQEnv(MuJoCo_BaseEnv):
         self.set_ctrl(self.get_hand_qpos(), skip_mocap=True)
         self._data.qvel[:] = 0
         return np_array32(contact_diffs)
+
+    def apply_torque_forces(
+        self,
+        dq: np.ndarray,
+    ):
+        qpos = self.get_hand_qpos()
+        dtheta = 2. * quaternion.as_quat_array(qpos[3:7]).conjugate() * quaternion.as_quat_array(dq[3:7])
+        dtheta = quaternion.as_float_array(dtheta)[1:]
+        
+        f = np.zeros(self._model.nv)
+        f[:3] = dq[:3]
+        f[3:6] = dtheta
+        f[6:] = dq[7:]
+        self._data.qfrc_applied[:] = f
+        self.set_ctrl(self.get_hand_qpos(), skip_mocap=True)
+        self._data.qvel[:] = 0
+        return
+
 
     def keep_hand_stable(self) -> None:
         self._data.qfrc_applied[:] = 0

@@ -434,15 +434,6 @@ def main(cfg: DictConfig):
     # render contact points cp_warp
     renderer.render_points('contact_points', cp_o_warp.numpy(), radius=0.01, colors=(1.0, 0.0, 0.0))
     renderer.render_mesh('object', points=obj_warp.points.numpy(), indices=obj_warp.indices.numpy(), colors=(0.8, 0.8, 0.8))
-    # # visualize gradient cp_h_warp.grad
-    # cp_st_vis = cp_h_warp.numpy()
-    # cp_ed_vis = cp_h_warp.numpy() - cp_h_warp.grad.numpy() * 5e0
-    # # s0, e0, s1, e1, ...
-    # cp_vis = np.zeros((len(cp_st_vis) * 2, 3), dtype=np.float32)
-    # cp_vis[0::2, :] = cp_st_vis
-    # cp_vis[1::2, :] = cp_ed_vis
-    # cp_idx_vis = np.arange(len(cp_st_vis) * 2, dtype=np.uint32)
-    # renderer.render_line_list('contact_point_grads', cp_vis, cp_idx_vis, radius=5e-3, color=(0.0, 1.0, 0.0))
     renderer.end_frame()
     for iter in range(cfg.num_step):
         cp_o_torch.grad.zero_()
