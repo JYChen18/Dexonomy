@@ -9,12 +9,14 @@ import warp.sim
 import warp.sim.render
 import torch
 import trimesh
+import matplotlib.pyplot as plt
 from qpsolvers import solve_qp
 from scipy.spatial.transform import Rotation as R
 from dexonomy.util.file_util import load_scene_cfg
 from dexonomy.util.np_util import np_normalize_vector, np_normal_to_rot
 
 from utils.vis_util import points_to_obj, arrows_to_obj
+from utils.warp_util import add_arr1D_wp, axbyz_arr1D_wp, axpy_arr1D_wp
 from sim_mujoco import MuJoCo_OptQEnv, MuJoCo_OptQCfg, HandCfg
 from utils.import_mjcf_custom import parse_mjcf
 
@@ -79,7 +81,7 @@ def qpos_wp2mj(qpos: np.ndarray):
 # print ("test mj2wp and wp2mj")
 # print(test_qpos_mj[3:7], test_qpos_wp[3:7], test_qpos_mj2[3:7])
 
-def init_sim_warp(cfg: dict, grasp_data: dict):
+def init_sim_wp(cfg: dict, grasp_data: dict):
     builder = wp.sim.ModelBuilder()
     # hand
     parse_mjcf(
@@ -233,16 +235,82 @@ def get_closest_point(
     return
 
 @wp.kernel
-def compute_cp_warp(
+def grad_primal_proximal(
+    cp_tmp: wp.array(dtype=wp.vec3),
+    grad: wp.array(dtype=wp.vec3),
+    cp_h: wp.array(dtype=wp.vec3),
+    lam: wp.array(dtype=wp.vec3),
+    rho: wp.float32,
+):
+    tid = wp.tid()
+    grad[tid] += rho * (cp_tmp[tid] - cp_h[tid] - lam[tid])
+
+@wp.kernel
+def compute_cp_wp(
     hand_cpn_b: wp.array(dtype=float, ndim=2),
     cbody_ids: wp.array(dtype=wp.int32),
     body_q: wp.array(dtype=wp.transform),
-    cp_warp: wp.array(dtype=wp.vec3),
+    cp_wp: wp.array(dtype=wp.vec3),
 ):
     tid = wp.tid()
     cp_b = wp.vec3(hand_cpn_b[tid, 0], hand_cpn_b[tid, 1], hand_cpn_b[tid, 2])
     id = cbody_ids[tid]
-    cp_warp[tid] = wp.transform_point(body_q[id], cp_b)
+    cp_wp[tid] = wp.transform_point(body_q[id], cp_b)
+
+@wp.kernel
+def update_cp_obj(
+    cp_tmp: wp.array(dtype=wp.vec3),
+    grad: wp.array(dtype=wp.vec3),
+    alpha: wp.float32,
+    mesh_idx: wp.array(dtype=wp.uint64),
+    single_batch_num: wp.int32,
+    # cp_o_wp: wp.array(dtype=wp.vec3)
+):
+    tid = wp.tid()
+    bid = tid // single_batch_num
+    
+    point = cp_tmp[tid] - alpha * grad[tid]
+    max_distance = 100.0
+    collide_result = wp.mesh_query_point(mesh_idx[bid], point, max_distance)
+
+    if collide_result.result:
+        face_index = collide_result.face
+        v0 = wp.mesh_get_point(mesh_idx[bid], face_index * 3 + 0)
+        v1 = wp.mesh_get_point(mesh_idx[bid], face_index * 3 + 1)
+        v2 = wp.mesh_get_point(mesh_idx[bid], face_index * 3 + 2)
+        u, v, w = collide_result.u, collide_result.v, 1.0 - collide_result.u - collide_result.v
+        p = u * v0 + v * v1 + w * v2
+        
+        cp_tmp[tid] = p
+
+    return
+    
+@wp.kernel
+def update_cpn_b(
+    cp_w: wp.array(dtype=wp.vec3),
+    hand_cpn_b: wp.array(dtype=float, ndim=2),
+    body_q: wp.array(dtype=wp.transform),
+    cbody_ids: wp.array(dtype=wp.int32),
+    mesh_ids: wp.array(dtype=wp.uint64)
+):
+    tid = wp.tid()
+    id = cbody_ids[tid]
+    # transform cp_w to local frame
+    cp_b = wp.transform_point(wp.transform_inverse(body_q[id]), cp_w[tid])
+    # project cp_b onto mesh
+    max_distance = 100.0
+    collide_result = wp.mesh_query_point(mesh_ids[id], cp_b, max_distance)
+    if collide_result.result:
+        face_index = collide_result.face
+        v0 = wp.mesh_get_point(mesh_ids[id], face_index * 3 + 0)
+        v1 = wp.mesh_get_point(mesh_ids[id], face_index * 3 + 1)
+        v2 = wp.mesh_get_point(mesh_ids[id], face_index * 3 + 2)
+        u, v, w = collide_result.u, collide_result.v, 1.0 - collide_result.u - collide_result.v
+        p = u * v0 + v * v1 + w * v2
+        hand_cpn_b[tid, 0] = p.x
+        hand_cpn_b[tid, 1] = p.y
+        hand_cpn_b[tid, 2] = p.z
+        
 
 # optimization target
 class QPSingle(torch.autograd.Function):
@@ -384,21 +452,21 @@ class QPSingleSolver:
 
 def init_local_contact(data: dict,
                        env_mujoco: MuJoCo_OptQEnv,
-                       model_warp: wp.sim.Model
+                       model_wp: wp.sim.Model
                        ):
     hand_cbody, obj_cpn_w = data["hand_cbody"], data["obj_cpn_w"]
     hand_cpn_b_np = env_mujoco.transform_cpn_w2b(hand_cbody, data["hand_cpn_w"])
     hand_cpn_b = wp.array(hand_cpn_b_np, dtype=float)
     
     cbody_ids = []
-    body_name_warp = model_warp.body_name
+    body_name_wp = model_wp.body_name
     for cb in hand_cbody:
         # cid = sim_env._model.body(sim_env._cfg.hand_prefix + cb).id
-        cid = body_name_warp.index(cb)
+        cid = body_name_wp.index(cb)
         cbody_ids.append(cid)
     cbody_ids = wp.array(cbody_ids, dtype=wp.int32)
     
-    return hand_cpn_b, cbody_ids
+    return hand_cpn_b, cbody_ids, hand_cbody
 
 @hydra.main(config_path="config", config_name="base", version_base=None)
 def main(cfg: DictConfig):
@@ -406,94 +474,170 @@ def main(cfg: DictConfig):
     data = load_instance(cfg)
 
     sim_env = init_sim_mujoco(cfg, data)
-    model_warp, state_warp, obj_warp = init_sim_warp(cfg, data)
-    hand_cpn_b, cbody_ids = init_local_contact(data, sim_env, model_warp)
+    model_wp, state_wp, obj_wp = init_sim_wp(cfg, data)
+    hand_mesh_ids = model_wp.shape_geo.source
+    hand_cpn_b, cbody_ids, hand_cbody = init_local_contact(data, sim_env, model_wp)
+    hand_cpn_b_np = hand_cpn_b.numpy()
     
-    cp_h_warp = wp.array(dtype=wp.vec3, shape=len(hand_cpn_b), requires_grad=True) # contact points on hand
-    cp_o_warp = wp.array(dtype=wp.vec3, shape=len(hand_cpn_b), requires_grad=True) # contact points on object
-    cn_o_warp = wp.array(dtype=wp.vec3, shape=len(hand_cpn_b), requires_grad=True) # contact normals in world
-    cp_o_torch = wp.to_torch(cp_o_warp)
-    cn_o_torch = wp.to_torch(cn_o_warp)
+    cp_h_wp = wp.array(dtype=wp.vec3, shape=len(hand_cpn_b), requires_grad=True) # contact points on hand
+    cp_tmp = wp.array(dtype=wp.vec3, shape=len(hand_cpn_b), requires_grad=True)
+    lam_wp = wp.array(dtype=wp.vec3, shape=len(hand_cpn_b), requires_grad=False)
+    lam_wp.zero_()
+    cp_o_wp = wp.array(dtype=wp.vec3, shape=len(hand_cpn_b), requires_grad=True) # contact points on object
+    cn_o_wp = wp.array(dtype=wp.vec3, shape=len(hand_cpn_b), requires_grad=True) # contact normals in world
+    cp_o_torch = wp.to_torch(cp_o_wp)
+    cn_o_torch = wp.to_torch(cn_o_wp)
+    
+    wp.launch(
+        kernel=compute_cp_wp, 
+        dim=len(cbody_ids), 
+        inputs=(hand_cpn_b, cbody_ids, state_wp.body_q, cp_h_wp)
+    )
+    wp.launch(
+        kernel=get_closest_point,
+        dim=len(cp_h_wp),
+        inputs=(cp_h_wp, wp.array([obj_wp.id], dtype=wp.uint64), 
+            len(cp_h_wp), cp_o_wp, cn_o_wp),
+    )
     
     if logging.getLogger().getEffectiveLevel() == logging.DEBUG:
-        wp.launch(compute_cp_warp, 
-                  dim=len(cbody_ids), 
-                  inputs=(hand_cpn_b, cbody_ids, state_warp.body_q, cp_h_warp)
-                  )
         print("contact points from mujoco:")
         print(data["hand_cpn_w"][:, :3])
         print("contact points from warp:")
-        print(cp_h_warp)
-    
+        print(cp_h_wp)
+
     qpsolver = QPSingleSolver(cfg.miu_coeff)
 
-
-    renderer = wp.sim.render.SimRenderer(model_warp, "opt.usd")
+    renderer = wp.sim.render.SimRenderer(model_wp, "opt.usd")
     renderer.begin_frame(0.0)
-    renderer.render(state_warp)
-    # render contact points cp_warp
-    renderer.render_points('contact_points', cp_o_warp.numpy(), radius=0.01, colors=(1.0, 0.0, 0.0))
-    renderer.render_mesh('object', points=obj_warp.points.numpy(), indices=obj_warp.indices.numpy(), colors=(0.8, 0.8, 0.8))
+    renderer.render(state_wp)
+    # render contact points cp_wp
+    renderer.render_points('contact_points', cp_o_wp.numpy(), radius=0.01, colors=(1.0, 0.0, 0.0))
+    renderer.render_mesh('object', points=obj_wp.points.numpy(), indices=obj_wp.indices.numpy(), colors=(0.8, 0.8, 0.8))
     renderer.end_frame()
+    qp_res = []
     for iter in range(cfg.num_step):
+        # reset gradients
         cp_o_torch.grad.zero_()
         cn_o_torch.grad.zero_()
-        tape = wp.Tape()
-        with tape:
-            # forward kinematics
-            wp.sim.eval_fk(model_warp, model_warp.joint_q, model_warp.joint_qd, None, state_warp)
-            # compute contact points in warp
-            wp.launch(compute_cp_warp, 
-                      dim=len(cbody_ids), 
-                      inputs=(hand_cpn_b, cbody_ids, state_warp.body_q, cp_h_warp),
-                      )
-            # compute closest points on object mesh
-            wp.launch(get_closest_point,
-                      dim=len(cp_h_warp),
-                      inputs=(cp_h_warp, wp.array([obj_warp.id], dtype=wp.uint64), 
-                              len(cp_h_warp), cp_o_warp, cn_o_warp),
-                      )
-        # foward to torch for QP solving
-        res = qpsolver.solve(
-            cp_o_torch,
-            cn_o_torch,
-            data['ext_wrench'],
-            data['ext_center'],
+        
+        # ADMM step 1: primal step, update cp_o_wp
+        # initial guess
+        # 1. cp_tmp = cp_h_wp + lam_wp
+        # wp.launch(add_arr1D_wp,
+        #           dim=len(lam_wp),
+        #           inputs=(cp_h_wp, lam_wp, cp_tmp),
+        #           )
+        # 2. cp_tmp = cp_o_wp
+        wp.copy(cp_tmp, cp_o_wp)
+        for ii in range(cfg.step_cp):
+            cp_o_torch.grad.zero_()
+            cn_o_torch.grad.zero_()
+            tape = wp.Tape()
+            with tape:
+                # compute closest points on object mesh
+                wp.launch(get_closest_point,
+                          dim=len(cp_h_wp),
+                          inputs=(cp_tmp, wp.array([obj_wp.id], dtype=wp.uint64), 
+                                  len(cp_h_wp), cp_o_wp, cn_o_wp),
+                          )
+            # foward to torch for QP solving
+            res = qpsolver.solve(
+                cp_o_torch,
+                cn_o_torch,
+                data['ext_wrench'],
+                data['ext_center'],
+            )
+            print(f"Step {iter}, primal step {ii}, QP wrench error: {res.item()}")
+            res.backward()
+            tape.backward(grads={cp_o_wp: cp_o_wp.grad, cn_o_wp: cn_o_wp.grad})
+            rho = 1.
+            wp.launch(
+                kernel=grad_primal_proximal,
+                dim=len(cp_h_wp),
+                inputs=(cp_tmp, cp_tmp.grad, cp_h_wp, lam_wp, rho),
+            )
+            alpha = 1e-1 # fixed for now
+            wp.launch(
+                kernel=update_cp_obj,
+                dim=len(cp_h_wp),
+                inputs=(cp_tmp, cp_tmp.grad, alpha, 
+                        wp.array([obj_wp.id], dtype=wp.uint64), 
+                        len(cp_h_wp)),
+                device="cuda"
+            )
+            # grad_step1_np = cp_tmp.grad.numpy()
+            tape.zero()
+        wp.copy(cp_o_wp, cp_tmp)
+        # ADMM step 2: fix cp_o_wp, optimize q
+        wp.launch(
+            kernel=axbyz_arr1D_wp,
+            dim=len(cbody_ids),
+            inputs=(cp_o_wp, 1., lam_wp, -1., cp_tmp),
         )
-        print(f"Step {iter}, QP wrench error: {res.item()}")
-        res.backward()
-        tape.backward(grads={cp_o_warp: cp_o_warp.grad, cn_o_warp: cn_o_warp.grad})
-        grad_q_wp = model_warp.joint_q.grad.numpy()
-        grad_q_mj = qpos_wp2mj(grad_q_wp)
-        grad_cp_h_np = cp_h_warp.grad.numpy()
-        # grad accquire before this
-        tape.zero()
-        print(f"Step {iter}, joint_q.grad: {np.linalg.norm(grad_q_wp)}")
-        # forward sim in mujoco
-        kappa = 1e2
-        sim_env.apply_torque_forces(- kappa * grad_q_mj)
-        sim_env.step_sim(cfg.substep)
+        cp_tmp_np = cp_tmp.numpy()
+        # # update hand_cpn_b
+        # wp.launch(
+        #     kernel=update_cpn_b,
+        #     dim=len(hand_cpn_b),
+        #     inputs=(cp_tmp, hand_cpn_b, state_wp.body_q, cbody_ids, hand_mesh_ids),
+        # )
+        # hand_cpn_b_np = hand_cpn_b.numpy()
+        for ii in range(cfg.step_mj):
+            curr_diff = sim_env.apply_contact_forces(hand_cbody, hand_cpn_b_np, cp_tmp_np)
+            sim_env.step_sim(cfg.substep)
+            if ii == 0 or np.max(prev_diff - curr_diff) > 1e-4:
+                prev_diff = np.copy(curr_diff)
+                continue
+            else:
+                prev_diff = np.copy(curr_diff)
+                # break
         # update to warp
         qpos_mj = sim_env.get_hand_qpos()
         qpos_wp = qpos_mj2wp(qpos_mj)
-        model_warp.joint_q.assign(qpos_wp)
-        state_warp.joint_q.assign(qpos_wp)
+        model_wp.joint_q.assign(qpos_wp)
+        state_wp.joint_q.assign(qpos_wp)
+        wp.sim.eval_fk(model_wp, model_wp.joint_q, model_wp.joint_qd, None, state_wp)
+        # ADMM step 3: update lam
+        wp.launch(
+            kernel=compute_cp_wp, 
+            dim=len(cbody_ids), 
+            inputs=(hand_cpn_b, cbody_ids, state_wp.body_q, cp_h_wp)
+        )
+        wp.launch(
+            kernel=axpy_arr1D_wp,
+            dim=len(cbody_ids),
+            inputs=(cp_h_wp, 1., lam_wp)
+        )
+        wp.launch(
+            kernel=axpy_arr1D_wp,
+            dim=len(cbody_ids),
+            inputs=(cp_o_wp, -1., lam_wp)
+        )
+        print(f"Step {iter}, lam norm: {np.linalg.norm(lam_wp.numpy())}")
+        qp_res.append(res.item())
+        
         
         renderer.begin_frame(float(iter + 1) * 0.4)
-        renderer.render(state_warp)
-        renderer.render_points('contact_points', cp_o_warp.numpy(), radius=0.01, colors=(1.0, 0.0, 0.0))
-        renderer.render_mesh('object', points=obj_warp.points.numpy(), indices=obj_warp.indices.numpy(), colors=(0.8, 0.8, 0.8))
-        # visualize gradient cp_h_warp.grad
-        cp_st_vis = cp_h_warp.numpy()
-        cp_ed_vis = cp_h_warp.numpy() - grad_cp_h_np * 5e0
-        # s0, e0, s1, e1, ...
-        cp_vis = np.zeros((len(cp_st_vis) * 2, 3), dtype=np.float32)
-        cp_vis[0::2, :] = cp_st_vis
-        cp_vis[1::2, :] = cp_ed_vis
-        cp_idx_vis = np.arange(len(cp_st_vis) * 2, dtype=np.uint32)
-        renderer.render_line_list('contact_point_grads', cp_vis, cp_idx_vis, radius=5e-3, color=(0.0, 1.0, 0.0))
+        renderer.render(state_wp)
+        renderer.render_points('contact_points', cp_o_wp.numpy(), radius=0.01, colors=(1.0, 0.0, 0.0))
+        renderer.render_mesh('object', points=obj_wp.points.numpy(), indices=obj_wp.indices.numpy(), colors=(0.8, 0.8, 0.8))
+        # # visualize gradient cp_h_wp.grad
+        # cp_st_vis = cp_h_wp.numpy()
+        # cp_ed_vis = cp_h_wp.numpy() - grad_step1_np * 5e0
+        # # s0, e0, s1, e1, ...
+        # cp_vis = np.zeros((len(cp_st_vis) * 2, 3), dtype=np.float32)
+        # cp_vis[0::2, :] = cp_st_vis
+        # cp_vis[1::2, :] = cp_ed_vis
+        # cp_idx_vis = np.arange(len(cp_st_vis) * 2, dtype=np.uint32)
+        # renderer.render_line_list('contact_point_grads', cp_vis, cp_idx_vis, radius=5e-3, color=(0.0, 1.0, 0.0))
         renderer.end_frame()
     renderer.save()
+    
+    plt.plot(qp_res)
+    plt.xlabel("iter")
+    plt.ylabel("qp res")
+    plt.savefig("qp_res.png")
 
 if __name__ == "__main__":
     main()

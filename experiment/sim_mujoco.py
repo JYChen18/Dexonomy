@@ -600,10 +600,11 @@ class MuJoCo_OptQEnv(MuJoCo_BaseEnv):
             h_cp_w = b_r @ hand_cpn_b[i, :3] + b_t
             o_cp_w = obj_cpn_w[i, :3]
             contact_diffs.append(np.linalg.norm(o_cp_w - h_cp_w))
-            delta_normal = (
-                np.sum((o_cp_w - h_cp_w) * obj_cpn_w[i, 3:], axis=-1, keepdims=True)
-                * obj_cpn_w[i, 3:]
-            )
+            # delta_normal = (
+            #     np.sum((o_cp_w - h_cp_w) * obj_cpn_w[i, 3:], axis=-1, keepdims=True)
+            #     * obj_cpn_w[i, 3:]
+            # )
+            delta_normal = np.zeros_like(o_cp_w)
             delta_tangent = o_cp_w - h_cp_w - delta_normal
             spring_force = delta_normal * 500 + delta_tangent * 100
             mujoco.mj_applyFT(
