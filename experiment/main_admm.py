@@ -25,6 +25,8 @@ from omegaconf import DictConfig
 from utils.log_util import set_logging
 from loader import load_instance
 
+FIX_HAND_LOCAL_CP = True
+
 def init_sim_mujoco(cfg: dict, grasp_data: dict):
     sim_env = MuJoCo_OptQEnv(
         hand_cfg=HandCfg(xml_path=cfg.hand.xml_path, freejoint=True),
@@ -181,6 +183,17 @@ def init_sim_wp(cfg: dict, grasp_data: dict):
     
     return model, state, obj_mesh
 
+def get_body_mesh_map(model: wp.sim.Model):
+    mesh_ids = []
+    geos = model.shape_geo.source.numpy()
+    for i in range(model.body_count):
+        shapes = model.body_shapes[i]
+        assert len(shapes) == 1, "Multiple shapes in one body is not supported."
+        mesh_ids.append(geos[shapes[0]])
+    mesh_ids = wp.array(data=mesh_ids, dtype=wp.uint64)
+    
+    return mesh_ids
+
 @wp.func
 def project_to_plane(p: wp.vec3, c: wp.vec3, n: wp.vec3) -> wp.vec3:
     """Project point p onto the plane with point c and normal n."""
@@ -294,22 +307,27 @@ def update_cpn_b(
     mesh_ids: wp.array(dtype=wp.uint64)
 ):
     tid = wp.tid()
-    id = cbody_ids[tid]
+    bid = cbody_ids[tid]
     # transform cp_w to local frame
-    cp_b = wp.transform_point(wp.transform_inverse(body_q[id]), cp_w[tid])
+    cp_b = wp.transform_point(wp.transform_inverse(body_q[bid]), cp_w[tid])
     # project cp_b onto mesh
     max_distance = 100.0
-    collide_result = wp.mesh_query_point(mesh_ids[id], cp_b, max_distance)
+    collide_result = wp.mesh_query_point(mesh_ids[bid], cp_b, max_distance)
     if collide_result.result:
         face_index = collide_result.face
-        v0 = wp.mesh_get_point(mesh_ids[id], face_index * 3 + 0)
-        v1 = wp.mesh_get_point(mesh_ids[id], face_index * 3 + 1)
-        v2 = wp.mesh_get_point(mesh_ids[id], face_index * 3 + 2)
+        v0 = wp.mesh_get_point(mesh_ids[bid], face_index * 3 + 0)
+        v1 = wp.mesh_get_point(mesh_ids[bid], face_index * 3 + 1)
+        v2 = wp.mesh_get_point(mesh_ids[bid], face_index * 3 + 2)
         u, v, w = collide_result.u, collide_result.v, 1.0 - collide_result.u - collide_result.v
         p = u * v0 + v * v1 + w * v2
         hand_cpn_b[tid, 0] = p.x
         hand_cpn_b[tid, 1] = p.y
         hand_cpn_b[tid, 2] = p.z
+        # HACK!!
+        if bid == 5 or bid == 10 or bid == 15:
+            hand_cpn_b[tid, 2] += 2.8e-2
+        elif bid == 20:
+            hand_cpn_b[tid, 2] += 4.4e-2
         
 
 # optimization target
@@ -475,7 +493,7 @@ def main(cfg: DictConfig):
 
     sim_env = init_sim_mujoco(cfg, data)
     model_wp, state_wp, obj_wp = init_sim_wp(cfg, data)
-    hand_mesh_ids = model_wp.shape_geo.source
+    hand_mesh_ids = get_body_mesh_map(model_wp)
     hand_cpn_b, cbody_ids, hand_cbody = init_local_contact(data, sim_env, model_wp)
     hand_cpn_b_np = hand_cpn_b.numpy()
     
@@ -512,7 +530,7 @@ def main(cfg: DictConfig):
     renderer.begin_frame(0.0)
     renderer.render(state_wp)
     # render contact points cp_wp
-    renderer.render_points('contact_points', cp_o_wp.numpy(), radius=0.01, colors=(1.0, 0.0, 0.0))
+    renderer.render_points('contact_points', cp_h_wp.numpy(), radius=5e-3, colors=(1.0, 0.0, 0.0))
     renderer.render_mesh('object', points=obj_wp.points.numpy(), indices=obj_wp.indices.numpy(), colors=(0.8, 0.8, 0.8))
     renderer.end_frame()
     qp_res = []
@@ -576,13 +594,14 @@ def main(cfg: DictConfig):
             inputs=(cp_o_wp, 1., lam_wp, -1., cp_tmp),
         )
         cp_tmp_np = cp_tmp.numpy()
-        # # update hand_cpn_b
-        # wp.launch(
-        #     kernel=update_cpn_b,
-        #     dim=len(hand_cpn_b),
-        #     inputs=(cp_tmp, hand_cpn_b, state_wp.body_q, cbody_ids, hand_mesh_ids),
-        # )
-        # hand_cpn_b_np = hand_cpn_b.numpy()
+        # update hand_cpn_b
+        if not FIX_HAND_LOCAL_CP:
+            wp.launch(
+                kernel=update_cpn_b,
+                dim=len(hand_cpn_b),
+                inputs=(cp_tmp, hand_cpn_b, state_wp.body_q, cbody_ids, hand_mesh_ids),
+            )
+            hand_cpn_b_np = hand_cpn_b.numpy()
         for ii in range(cfg.step_mj):
             curr_diff = sim_env.apply_contact_forces(hand_cbody, hand_cpn_b_np, cp_tmp_np)
             sim_env.step_sim(cfg.substep)
@@ -620,7 +639,7 @@ def main(cfg: DictConfig):
         
         renderer.begin_frame(float(iter + 1) * 0.4)
         renderer.render(state_wp)
-        renderer.render_points('contact_points', cp_o_wp.numpy(), radius=0.01, colors=(1.0, 0.0, 0.0))
+        renderer.render_points('contact_points', cp_h_wp.numpy(), radius=5e-3, colors=(1.0, 0.0, 0.0))
         renderer.render_mesh('object', points=obj_wp.points.numpy(), indices=obj_wp.indices.numpy(), colors=(0.8, 0.8, 0.8))
         # # visualize gradient cp_h_wp.grad
         # cp_st_vis = cp_h_wp.numpy()
