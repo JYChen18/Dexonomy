@@ -618,6 +618,46 @@ class MuJoCo_OptEnv(MuJoCo_BaseEnv):
         self._data.qvel[:] = 0
         return np_array32(contact_diffs)
 
+    def apply_contact_forces_no_normal(
+        self,
+        hand_cbody: list[str],
+        hand_cp_b: np.ndarray,
+        obj_cp_w: np.ndarray,
+    ) -> np.ndarray:
+        """
+        Args:
+            hand_cbody: list of hand contact bodies
+            hand_cpn_b: (N, 6) hand contact points and normals in hand body frame
+            obj_cpn_w: (N, 6) object contact points and normals in world frame
+        Returns:
+            contact_diffs: (N,) difference between object contact point and hand contact point
+        """
+        self._data.qfrc_applied[:] = 0
+        self._data.xfrc_applied[:] = 0
+        contact_diffs = []
+        for i, h_cb in enumerate(hand_cbody):
+            b_id = self._model.body(self._cfg.hand_prefix + h_cb).id
+            b_r = self._data.xmat[b_id].reshape(3, 3)
+            b_t = self._data.xpos[b_id]
+            h_cp_w = b_r @ hand_cp_b[i, :3] + b_t
+            o_cp_w = obj_cp_w[i, :3]
+            contact_diffs.append(np.linalg.norm(o_cp_w - h_cp_w))
+            delta_tangent = o_cp_w - h_cp_w
+            spring_force = delta_tangent * 100
+            mujoco.mj_applyFT(
+                self._model,
+                self._data,
+                spring_force,
+                0 * spring_force,
+                h_cp_w,
+                b_id,
+                self._data.qfrc_applied,
+            )
+        self.set_ctrl(self.get_hand_qpos(), skip_mocap=True)
+        self._data.qvel[:] = 0
+        return np_array32(contact_diffs)
+
+
     def keep_hand_stable(self) -> None:
         self._data.qfrc_applied[:] = 0
         self._data.xfrc_applied[:] = 0

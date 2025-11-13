@@ -5,7 +5,7 @@ import glob
 import numpy as np
 
 from dexonomy.sim import MuJoCo_OptEnv, MuJoCo_OptCfg, HandCfg
-from dexonomy.qp.qp_single import ContactQP
+from dexonomy.qp.qp_single import ContactQP, ContactQPTorch
 from dexonomy.util.np_util import np_array32
 from dexonomy.util.file_util import load_scene_cfg, safe_wrapper
 
@@ -183,7 +183,7 @@ def _single_grasp(param):
     return input_path
 
 
-def operate_grasp(cfg: dict):
+def operate_grasp_admm(cfg: dict):
     input_path_lst = glob.glob(os.path.join(cfg.init_dir, "**/*.npy"), recursive=True)
 
     # Debug mode: only process the debug name
