@@ -29,3 +29,4 @@ packages = ["dexonomy"]
 dexkill = "dexonomy.kill:main"
 dexrun = "dexonomy.main:main"     # Single-operation runner
 dexsyn = "dexonomy.script:main"  # Full pipeline runner
+dexsyn_admm = "dexonomy.script_admm:main"  # Full pipeline runner

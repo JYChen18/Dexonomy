@@ -6,8 +6,8 @@ grasp:
     limit:
       thre: 0.0  # max value out of the joint qpos limit
     collision: 
-      hh_thre: 0.0  # min hand-hand distance for collision-free grasp
-      ho_thre: 0.0  # min hand-object distance for collision-free grasp
+      hh_thre: -1e-2  # min hand-hand distance for collision-free grasp
+      ho_thre: -1e-2  # min hand-object distance for collision-free grasp
     contact: 
       thre: 0.002  # max hand-object distance for a valid contact
       check_body: True  # check if the required contact bodies are in contact

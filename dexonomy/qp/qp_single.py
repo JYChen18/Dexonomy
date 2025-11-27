@@ -239,7 +239,7 @@ class ContactQPTorch:
         # - sum pressure <= -0.1
         G_matrix[-1, :] = -1.0
         # remove this constraint by commenting out the following line
-        # h_matrix[-1] = -1.0
+        h_matrix[-1] = -1.0
 
         # https://mujoco.readthedocs.io/en/stable/_images/contact_frame.svg
         E_matrix = np.zeros((self.num_contact, 6, 6))
