@@ -9,7 +9,7 @@ from dexonomy.util.file_util import load_yaml, load_scene_cfg, safe_wrapper
 
 @safe_wrapper
 def load_instance(cfg):
-    base_dir = f"{cfg.project_base_dir}/output/{cfg.exp_name}/succ_grasp/{cfg.tmpl_name}/{cfg.obj_name}/floating"
+    base_dir = f"{cfg.project_base_dir}/output/{cfg.exp_name}/{cfg.stage_name}/{cfg.tmpl_name}/{cfg.obj_name}/floating"
     # if scale is null
     if cfg.scale is None:
         scale_dir = os.path.join(base_dir, os.listdir(base_dir)[0])

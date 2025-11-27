@@ -27,7 +27,7 @@ from omegaconf import DictConfig
 from utils.log_util import set_logging
 from loader import load_instance
 
-FIX_HAND_LOCAL_CP = True
+FIX_HAND_LOCAL_CP = False
 
 torch.set_default_device("cpu")
 
@@ -183,6 +183,44 @@ def point_to_triangle(points, triangles, normals=None, eps=1e-20):
     else:
         return distances, closest_points
 
+def point_to_triangle_simple(points, triangles, normals=None, eps=1e-20):
+    # Extract vertices
+    A, B, C = triangles.unbind(dim=1)  # each (N, 3)
+    NA, NB, NC = None, None, None
+    if normals is not None:
+        NA, NB, NC = normals.unbind(dim=1)  # each (N, 3)
+
+    # Compute edges
+    AB = B - A
+    AC = C - A
+    BC = C - B
+
+    # Vector from A to point
+    AP = points - A
+
+    # Compute barycentric coordinates
+    dot00 = torch.sum(AB * AB, dim=1)
+    dot01 = torch.sum(AB * AC, dim=1)
+    dot02 = torch.sum(AB * AP, dim=1)
+    dot11 = torch.sum(AC * AC, dim=1)
+    dot12 = torch.sum(AC * AP, dim=1)
+    
+    inv_denom = 1.0 / (dot00 * dot11 - dot01 * dot01 + eps)
+    u = (dot11 * dot02 - dot01 * dot12) * inv_denom
+    v = (dot00 * dot12 - dot01 * dot02) * inv_denom
+    
+    proj = A + u.unsqueeze(1) * AB + v.unsqueeze(1) * AC
+    distance = torch.norm(points - proj, dim=-1, keepdim=True)
+
+    if normals is not None:
+        normals_intp = (1 - u - v).unsqueeze(1) * NA \
+          + u.unsqueeze(1) * NB + v.unsqueeze(1) * NC
+        normals_intp = normals_intp / (torch.norm(normals_intp, dim=1, keepdim=True) + eps)
+        return distance, proj, normals_intp
+    else:
+        return distance, proj
+
+
 def create_hand_trimesh(
     env: MuJoCo_OptQEnv
 ):
@@ -211,7 +249,9 @@ def project_to_hand(
   geom_filter: str = "all"
   ):
     q_world = np.zeros_like(pts)
+    n_world = np.zeros_like(pts)
     q_body = np.zeros_like(pts)
+    n_body = np.zeros_like(pts)
     for i in range(pts.shape[0]):
         body_id = env._model.body(env._cfg.hand_prefix + hand_cbody[i]).id
         b_r = env._data.xmat[body_id].reshape(3, 3)
@@ -241,6 +281,7 @@ def project_to_hand(
         
         p_local = (pts[i] - g_t) @ g_r
         p_local = p_local.reshape(1, 3)
+        n_local = np.zeros_like(p_local)
         if g_type == mujoco.mjtGeom.mjGEOM_BOX:
             h = g_size[:3]
             q_local = np.clip(p_local, -h, h)
@@ -249,10 +290,14 @@ def project_to_hand(
             s = np.sign(np.take_along_axis(q_local, k, -1)) \
               * np.take_along_axis(h[None,...], k, -1) # project to +h/-h
             np.put_along_axis(q_local, k, s, -1)
+            n_local = (p_local - q_local) / \
+              (np.linalg.norm(p_local - q_local, axis=-1, keepdims=True) + 1e-9)
+            n_local *= np.sign(np.dot(n_local, q_local, axis=-1, keepdims=True))
         elif g_type == mujoco.mjtGeom.mjGEOM_SPHERE:
             r = g_size[0]
             d = np.linalg.norm(p_local, axis=-1, keepdims=True)
             q_local = p_local * (r / (d + 1e-9))
+            n_local = p_local / (d + 1e-9)
         elif g_type == mujoco.mjtGeom.mjGEOM_CYLINDER:
             r, h = g_size[0], g_size[1]
             xy = p_local[:, :2]
@@ -270,6 +315,9 @@ def project_to_hand(
             final_xy = np.where(k == 0, side_proj_xy, xy_clipped)
             final_z = np.where(k == 1, cap_proj_z, z_clipped)
             q_local = np.concatenate([final_xy, final_z], axis=-1)
+            n_local = (p_local - q_local) / \
+              (np.linalg.norm(p_local - q_local, axis=-1, keepdims=True) + 1e-9)
+            n_local *= np.sign(np.dot(n_local, q_local, axis=-1, keepdims=True))
         elif g_type == mujoco.mjtGeom.mjGEOM_CAPSULE:
             r, h = g_size[0], g_size[1]
             xy = p_local[:, :2]
@@ -286,15 +334,21 @@ def project_to_hand(
             z_cap = (z - z_clipped) / (dcap + 1e-9) * r + z_clipped
             q_cap = np.concatenate([xy_cap, z_cap[...,None]], axis=-1)
             q_local = np.where(to_side[..., None], q_side, q_cap)
+            n_local = (p_local - q_local) / \
+              (np.linalg.norm(p_local - q_local, axis=-1, keepdims=True) + 1e-9)
+            n_local *= np.sign(np.dot(n_local, q_local, axis=-1, keepdims=True))
         elif g_type == mujoco.mjtGeom.mjGEOM_MESH:
             mesh = meshes[g_id]
-            q_local, dist, _ = trimesh.proximity.closest_point(mesh, p_local)
+            q_local, dist, tri_ids = trimesh.proximity.closest_point(mesh, p_local)
+            n_local = mesh.face_normals[tri_ids]
         else:
             raise NotImplementedError(f"geom type {g_type} not supported yet")
-            
+           
         q_world[i] = (q_local @ g_r.T + g_t).reshape(3)
+        n_world[i] = (n_local @ g_r.T).reshape(3)
         q_body[i] = ((q_world[i] - b_t) @ b_r).reshape(3)
-    return q_world, q_body
+        n_body[i] = (n_world[i] @ b_r).reshape(3)
+    return q_world, q_body, n_world, n_body
 
 def init_sim_mujoco(cfg: dict, grasp_data: dict):
     sim_env = MuJoCo_OptQEnv(
@@ -563,7 +617,7 @@ class QPSingleSolver:
         # - sum pressure <= -0.1
         G_matrix[-1, :] = -1.0
         # remove this constraint by commenting out the following line
-        # h_matrix[-1] = -1.0
+        h_matrix[-1] = -1.0
 
         # https://mujoco.readthedocs.io/en/stable/_images/contact_frame.svg
         E_matrix = np.zeros((self.num_contact, 6, 6))
@@ -617,7 +671,7 @@ def init_local_contact(data: dict,
         cbody_ids.append(cid)
     cbody_ids = wp.array(cbody_ids, dtype=wp.int32)
     
-    return hand_cpn_b, cbody_ids, hand_cbody
+    return hand_cpn_b, cbody_ids, hand_cbody, obj_cpn_w
 
 @hydra.main(config_path="config", config_name="base", version_base=None)
 def main(cfg: DictConfig):
@@ -628,7 +682,7 @@ def main(cfg: DictConfig):
     hand_meshes = create_hand_trimesh(sim_env)
     obj_mesh, obj_vert, obj_norm, obj_face = load_obj_trimesh(data)
     model_wp, state_wp, obj_wp = init_sim_wp(cfg, data)
-    hand_cpn_b, cbody_ids, hand_cbody = init_local_contact(data, sim_env, model_wp)
+    hand_cpn_b, cbody_ids, hand_cbody, obj_cpn_w = init_local_contact(data, sim_env, model_wp)
     hand_cpn_b_np = hand_cpn_b.numpy()
     
     NC = len(hand_cpn_b)
@@ -650,13 +704,14 @@ def main(cfg: DictConfig):
         cpn_h = sim_env.transform_cpn_b2w(hand_cbody, hand_cpn_b_np)
         cp_h.copy_(torch.from_numpy(cpn_h[:, :3]))
         closest, *_ = get_closest_triangles(obj_mesh, cp_h.detach().numpy())
-        cp_o_cpu.copy_(torch.from_numpy(closest))
+        # cp_o_cpu.copy_(torch.from_numpy(closest))
+        cp_o_cpu.copy_(torch.from_numpy(obj_cpn_w[:, :3]))
 
     renderer = wp.sim.render.SimRenderer(model_wp, "opt.usd")
     renderer.begin_frame(0.0)
     renderer.render(state_wp)
     # render contact points cp_wp
-    # renderer.render_points('contact_points', cp_h.numpy(), radius=5e-3, colors=(1.0, 0.0, 0.0))
+    renderer.render_points('contact_points', cp_o_cpu.numpy(), radius=5e-3, colors=(1.0, 0.0, 0.0))
     renderer.render_mesh('object', points=obj_wp.points.numpy(), indices=obj_wp.indices.numpy(), colors=(0.8, 0.8, 0.8))
     renderer.end_frame()
     qp_res = []
@@ -670,12 +725,12 @@ def main(cfg: DictConfig):
         with torch.no_grad():
             cp_tmp[:] = cp_o_cpu
         # cp_tmp to closest point
+        _, _, tri_vert, tri_norm = get_closest_triangles(
+            obj_mesh, cp_tmp.detach().numpy(), obj_vert, obj_norm, obj_face
+        )
         for ii in range(cfg.step_cp):
             cp_tmp.grad = None
-            _, _, tri_vert, tri_norm = get_closest_triangles(
-                obj_mesh, cp_tmp.detach().numpy(), obj_vert, obj_norm, obj_face
-            )
-            _, cp_o, cn_o = point_to_triangle(
+            _, cp_o, cn_o = point_to_triangle_simple(
                 cp_tmp, tri_vert, tri_norm
             )
             cn_o = - cn_o # for QP
@@ -684,17 +739,20 @@ def main(cfg: DictConfig):
                 cp_o,
                 cn_o,
                 data['ext_wrench'],
+                # np.random.rand(6) * 1e-6,
                 data['ext_center'],
             )
+            qp_res.append(res.item())
             print(f"Step {iter}, primal step {ii}, QP wrench error: {res.item()}")
             res.backward()
             with torch.no_grad():
-                rho = 1.
+                rho = cfg.rho * (1. + iter / cfg.num_step * 9.)
                 cp_tmp.grad += rho * (cp_tmp - cp_h - lam)
-                alpha = 1e-1 # fixed for now
-                cp_tmp -= alpha * cp_tmp.grad
+                # project gradient to tangential plane
+                cp_tmp.grad -= torch.sum(cp_tmp.grad * cn_o, dim=1, keepdim=True) * cn_o
+                cp_tmp -= cfg.alpha * cp_tmp.grad
                 # project to object
-                closest, *_ = get_closest_triangles(obj_mesh, cp_tmp.detach().numpy())
+                closest, _, tri_vert, tri_norm = get_closest_triangles(obj_mesh, cp_tmp.detach().numpy(), obj_vert, obj_norm, obj_face)
                 cp_tmp.copy_(torch.from_numpy(closest))
                 # grad_step1_np = cp_tmp_wp.grad.numpy()
                 cp_o_cpu[:] = cp_tmp
@@ -704,8 +762,9 @@ def main(cfg: DictConfig):
             cp_tmp = cp_o_cpu - lam
         # update hand_cpn_b
         if not FIX_HAND_LOCAL_CP:
-            _, tmp = project_to_hand(cp_tmp.detach().numpy(), hand_cbody, sim_env, hand_meshes, "visual")
-            hand_cpn_b_np[:, :3] = tmp
+            _, pos_proj, _, norm_proj = project_to_hand(cp_tmp.detach().numpy(), hand_cbody, sim_env, hand_meshes, "visual")
+            hand_cpn_b_np[:, :3] = pos_proj
+            hand_cpn_b_np[:, 3:] = norm_proj
         for ii in range(cfg.step_mj):
             curr_diff = sim_env.apply_contact_forces(hand_cbody, hand_cpn_b_np, cp_tmp.detach().numpy())
             sim_env.step_sim(cfg.substep)
@@ -727,7 +786,6 @@ def main(cfg: DictConfig):
             cp_h.copy_(torch.from_numpy(cpn_h[:, :3]))
             lam += cp_h - cp_o_cpu
         print(f"Step {iter}, lam norm: {lam.norm().item()}")
-        qp_res.append(res.item())
         
         
         renderer.begin_frame(float(iter + 1) * 0.4)
@@ -749,6 +807,7 @@ def main(cfg: DictConfig):
     plt.plot(qp_res)
     plt.xlabel("iter")
     plt.ylabel("qp res")
+    plt.yscale('log')
     plt.savefig("qp_res.png")
 
 if __name__ == "__main__":

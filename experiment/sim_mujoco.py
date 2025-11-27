@@ -606,7 +606,7 @@ class MuJoCo_OptQEnv(MuJoCo_BaseEnv):
             # )
             delta_normal = np.zeros_like(o_cp_w)
             delta_tangent = o_cp_w - h_cp_w - delta_normal
-            spring_force = delta_normal * 500 + delta_tangent * 100
+            spring_force = delta_normal * 500 + delta_tangent * 2e2
             mujoco.mj_applyFT(
                 self._model,
                 self._data,
