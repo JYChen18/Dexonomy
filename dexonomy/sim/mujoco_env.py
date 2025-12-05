@@ -519,6 +519,13 @@ class MuJoCo_OptCfg(SimCfg):
     obj_margin: float = 0.001
     hand_margin: float = 0.001
     plane_margin: float = 0.02
+    # joint limit solimp
+    joint_solimp: list[float] = field(
+        default_factory=lambda: [0.9, 0.99, 0.001, 0.5, 2]
+    )
+    joint_solref: list[float] = field(
+        default_factory=lambda: [0.005, 1]
+    )
 
 
 class MuJoCo_OptEnv(MuJoCo_BaseEnv):
@@ -531,6 +538,12 @@ class MuJoCo_OptEnv(MuJoCo_BaseEnv):
         debug_view: bool = False,
     ):
         super().__init__(hand_cfg, scene_cfg, sim_cfg, debug_render, debug_view)
+        for j in range(self._model.njnt):
+            self._model.jnt_solimp[j] = sim_cfg.joint_solimp
+            self._model.jnt_solref[j] = sim_cfg.joint_solref
+        for i in range(self._model.ngeom):
+            self._model.geom_solimp[i] = sim_cfg.joint_solimp
+            self._model.geom_solref[i] = sim_cfg.joint_solref
         return
 
     def _set_friction(self, miu_coef):

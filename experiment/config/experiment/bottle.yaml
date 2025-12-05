@@ -1,0 +1,8 @@
+# @package _global_
+exp_name: all_new_allegro
+tmpl_name: fingertip_large
+stage_name: init_data
+
+obj_name: core_bottle_b742bd7f675191c24ad6a0c67b7f7a5b
+scale: 0.08
+instance_name: 2_2_grasp

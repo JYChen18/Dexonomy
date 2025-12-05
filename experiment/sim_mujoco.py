@@ -30,6 +30,7 @@ class MuJoCo_BaseEnv:
         debug_render: bool = False,
         debug_view: bool = False,
     ):
+        # sim_cfg.timestep = 1e-3
         self._cfg = sim_cfg
         self._spec = mujoco.MjSpec()
         self._spec.meshdir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
@@ -141,6 +142,8 @@ class MuJoCo_BaseEnv:
         self.n_hand_body = len(child_spec.bodies)
         for j in child_spec.joints:
             j.margin = 0.1
+            # j.solimp_limit[:] = [0.999, 0.9999, 0.0001, 0.5, 2]
+            # j.solref_limit[:] = [1e-6, 1e-1]
         for g in child_spec.geoms:
             # This solimp and solref comes from the Shadow Hand xml
             # The body will be more "rigid" and less "soft"
@@ -532,6 +535,14 @@ class MuJoCo_OptQEnv(MuJoCo_BaseEnv):
         debug_view: bool = False,
     ):
         super().__init__(hand_cfg, scene_cfg, sim_cfg, debug_render, debug_view)
+        for j in range(self._model.njnt):
+            # j.solimp_limit[:] = [0.999, 0.9999, 0.0005, 0.5, 2]
+            # j.solref_limit[:] = [1e-3, 1.]
+            self._model.jnt_solimp[j] = [0.9, 0.99, 1e-3, 0.5, 2]
+            self._model.jnt_solref[j] = [1e-3, 1.]
+        for i in range(self._model.ngeom):
+            self._model.geom_solimp[i] = [0.9, 0.99, 1e-3, 0.5, 2]
+            self._model.geom_solref[i] = [1e-3, 1.]
         return
 
     def _set_friction(self, miu_coef):

@@ -1,0 +1,8 @@
+# @package _global_
+exp_name: all_new_allegro
+tmpl_name: 1_Large_Diameter
+stage_name: init_data
+
+obj_name: ddg_gd_shampoo_new_poisson_001
+scale: 0.14
+instance_name: 0_90_grasp

@@ -22,7 +22,7 @@ substep: 10
 step_cp: 10
 step_mj: 10
 rho: 1e-1
-alpha: 1e-2
+alpha: 2e-3
 
 verbose: 1 # 0: warning, 1: info, 2: debug
 

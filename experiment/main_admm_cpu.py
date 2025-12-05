@@ -547,8 +547,12 @@ class QPSingle(torch.autograd.Function):
         param2force = grasp_matrix @ E_matrix  # [n, 6, 6]
         flatten_param2force = np.transpose(param2force, (1, 0, 2)).reshape(6, -1)
         
-        P_matrix = flatten_param2force.T @ flatten_param2force
-        q_matrix = gravity @ flatten_param2force
+        s = 1.
+        M_sqrt = np.diag([1., 1., 1., s, s, s])
+        M = np.diag([1., 1., 1., s**2, s**2, s**2])
+        
+        P_matrix = flatten_param2force.T @ M @ flatten_param2force
+        q_matrix = 2. * gravity @ M @ flatten_param2force
         
         solution = solve_qp(
             P=scipy.sparse.csc_matrix(P_matrix),
@@ -568,7 +572,8 @@ class QPSingle(torch.autograd.Function):
         f_param_np = (E_matrix @ solution[..., None]).squeeze(axis=-1)  # [n, 6]
         f_param = torch.from_numpy(f_param_np).to(torch.float32).to(points.device)
         
-        wrench_error = np.linalg.norm(np.sum(contact_wrenches_np, axis=0) + gravity)
+        # wrench_error = np.linalg.norm(np.sum(contact_wrenches_np, axis=0) + gravity)
+        wrench_error = np.linalg.norm(M_sqrt @ (np.sum(contact_wrenches_np, axis=0) + gravity))
         relative_pos = torch.from_numpy(relative_pos_np).to(torch.float32).to(points.device)
         contact_wrenches = torch.from_numpy(contact_wrenches_np).to(torch.float32).to(points.device)
         wrench_res = torch.sum(contact_wrenches, dim=0) + torch.from_numpy(gravity).to(torch.float32).to(points.device)  # (6,)
@@ -582,9 +587,10 @@ class QPSingle(torch.autograd.Function):
         # gradient of squared wrench error * 0.5
         relative_pos, f_param, contact_wrenches, wrench_res = ctx.saved_tensors
         # grad to points
-        grad_points = torch.cross(contact_wrenches[:, 3:], wrench_res[None, :3], dim=-1)
+        s = 1.
+        grad_points = torch.cross(contact_wrenches[:, 3:], wrench_res[None, :3], dim=-1) * s**2
         # grad to normals
-        grad_normals = (wrench_res[None, :3] - torch.cross(relative_pos, wrench_res[None, 3:], dim=-1)) * f_param[:, 0][:, None]
+        grad_normals = (wrench_res[None, :3] - torch.cross(relative_pos, wrench_res[None, 3:], dim=-1) * s**2) * f_param[:, 0][:, None]
         return grad_points, grad_normals, None, None, None, None, None, None
 
 class QPSingleSolver:
@@ -699,6 +705,14 @@ def main(cfg: DictConfig):
         print(cp_h_wp)
 
     qpsolver = QPSingleSolver(cfg.miu_coeff)
+    # n_qp = 4
+    # qpsolvers = [QPSingleSolver(cfg.miu_coeff) for _ in range(n_qp)]
+    # ext_wrenches = np.zeros((n_qp, 6))
+    # ext_wrenches[0, :3] = [0., 0., 1.]
+    # ext_wrenches[1, :3] = [2 * np.sqrt(2.) / 3., 0, - 1. / 3.]
+    # ext_wrenches[2, :3] = [- np.sqrt(2.) / 3., np.sqrt(6.) / 3., - 1. / 3.]
+    # ext_wrenches[3, :3] = [- np.sqrt(2.) / 3., - np.sqrt(6.) / 3., - 1. / 3.]
+    # ext_wrenches *= 1e-1
 
     with torch.no_grad():
         cpn_h = sim_env.transform_cpn_b2w(hand_cbody, hand_cpn_b_np)
@@ -735,6 +749,15 @@ def main(cfg: DictConfig):
             )
             cn_o = - cn_o # for QP
             # foward to torch for QP solving
+            # res_tmp = torch.zeros((1), requires_grad=True)
+            # for sid in range(n_qp):
+            #   res_tmp = res_tmp + qpsolvers[sid].solve(
+            #       cp_o,
+            #       cn_o,
+            #       ext_wrenches[sid],
+            #       data['ext_center'],
+            #   )
+            # res = res_tmp.mean()
             res = qpsolver.solve(
                 cp_o,
                 cn_o,
@@ -747,6 +770,7 @@ def main(cfg: DictConfig):
             res.backward()
             with torch.no_grad():
                 rho = cfg.rho * (1. + iter / cfg.num_step * 9.)
+                # rho = cfg.rho
                 cp_tmp.grad += rho * (cp_tmp - cp_h - lam)
                 # project gradient to tangential plane
                 cp_tmp.grad -= torch.sum(cp_tmp.grad * cn_o, dim=1, keepdim=True) * cn_o

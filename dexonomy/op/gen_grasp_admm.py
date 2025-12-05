@@ -392,7 +392,10 @@ class GraspFilter:
         return True
 
     def _limit_filter(self) -> bool:
-        return self.sim_env.check_qpos_limit(self.cfg.limit.thre)
+        ret = self.sim_env.check_qpos_limit(self.cfg.limit.thre)
+        if not ret:
+            logging.debug(f"{self.log_name} qpos limit")
+        return ret
 
 def init_worker():
     OmegaConf.register_new_resolver("hydra", lambda *args: None, replace=True)

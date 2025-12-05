@@ -2,27 +2,27 @@ grasp:
   device: "cpu"
   gpus: [0, 1, 2, 3] # only used when device is cuda
   process_per_gpu: 4 # only used when device is cuda
-  step: 20 # admm step
+  step: 40 # admm step
   substep: 10 # mujoco sim substep
   step_obj: 10 # steps for contact points on objects
   step_hand: 10 # steps for hand
   cdist: 0.001    # target hand-object contact distance
   rho_admm: 1e-1
-  lr_obj: 1e-2 # 5e-2
+  lr_obj: 2e-3
   fix_hand_local_cp: False
   opt_miu_coef: [0.1, 0]
   filter:
     limit:
       thre: 0.0  # max value out of the joint qpos limit
     collision: 
-      hh_thre: -1e-2  # min hand-hand distance for collision-free grasp
-      ho_thre: -1e-2  # min hand-object distance for collision-free grasp
+      hh_thre: -2e-3  # min hand-hand distance for collision-free grasp
+      ho_thre: -2e-3  # min hand-object distance for collision-free grasp
     contact: 
       thre: 0.002  # max hand-object distance for a valid contact
       check_body: True  # check if the required contact bodies are in contact
     qp:
       thre: 0.001  # the qp error should be less than this threshold
-      miu_coef: [0.6, 0.02]  # tangential and torsional friction coefficient
+      miu_coef: [0.6, 0.0]  # tangential and torsional friction coefficient
   
 pregrasp:
   step: 20

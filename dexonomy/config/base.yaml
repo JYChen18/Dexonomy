@@ -1,5 +1,5 @@
 # General configurations
-n_worker: 16    
+n_worker: 32    
 skip_done: True   # skip if the result already exists, used for op=init, grasp and eval
 skip_traj: True   # skip trajectory generation and evaluation
 skip_grasp_eval: False  # skip grasp evaluation
