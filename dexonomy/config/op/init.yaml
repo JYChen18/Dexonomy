@@ -1,4 +1,4 @@
-epoch: 5
+epoch: 4
 device: "cuda"  # or "cpu"
 
 object:

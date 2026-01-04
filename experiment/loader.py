@@ -22,6 +22,7 @@ def load_instance(cfg):
         raise FileNotFoundError(f"Instance file not found: {instance_path}")
     logging.info(f"Loaded instance from {instance_path}")
     logging.info(f"Instance data keys: {list(data.keys())}")
+    logging.info(f"hand_cbody: {data['hand_cbody']}")
     logging.info(f"hand: {data['hand_name']}, template: {data['tmpl_name']}, object: {cfg.obj_name}")
     
     data['scene_path'] = os.path.join(cfg.project_base_dir, data['scene_path'])
@@ -61,6 +62,7 @@ if __name__ == "__main__":
 
         # output qpos to fast-graspd
         qpos = data["grasp_qpos"][0]
+        print(qpos.tolist(), sep=",")
         # move thumb's dof to the front
         thumb_qpos = qpos[-4:]
         f1_qpos = qpos[-8:-4]
@@ -76,8 +78,23 @@ if __name__ == "__main__":
         r1 = R.from_rotvec(-np.array([0, 1, 0]) * np.pi / 2)
         r2 = R.from_rotvec(np.array([0, 0, 1]) * np.pi)
         qpos[3:7] = (r * r2 * r1).as_quat()
-        np.save("outputs/debug_qpos.npy", qpos)
+        print(qpos[6], qpos[3], qpos[4], qpos[5])
+        np.save("obj_qpos.npy", qpos)
         # load scene_cfg
         scene_cfg = load_scene_cfg(data["scene_path"])
-        
+        import json
+        # Custom JSON Encoder to handle NumPy types
+        class NumpyEncoder(json.JSONEncoder):
+            def default(self, obj):
+                if isinstance(obj, np.ndarray):
+                    return obj.tolist()
+                if isinstance(obj, (np.int_, np.intc, np.intp, np.int8, np.int16, np.int32, np.int64)):
+                    return int(obj)
+                if isinstance(obj, (np.float_, np.float16, np.float32, np.float64)):
+                    return float(obj)
+                return super(NumpyEncoder, self).default(obj)
+
+        # Save the data to a JSON file
+        with open('scene.json', 'w') as f:
+            json.dump(scene_cfg, f, cls=NumpyEncoder, indent=4)
     main()

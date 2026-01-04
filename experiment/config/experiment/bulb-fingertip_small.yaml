@@ -1,5 +1,6 @@
 # @package _global_
 exp_name: bulb_allegro
+stage_name: init_data
 tmpl_name: fingertip_small
 
 obj_name: sem_LightBulb_8338a18d589c26d21c648623457982d0

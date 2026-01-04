@@ -21,8 +21,9 @@ num_step: 20
 substep: 10
 step_cp: 10
 step_mj: 10
-rho: 1e-1
-alpha: 2e-3
+rho: 1e1
+rho_final: 1e1
+alpha: 2e-4
 
 verbose: 1 # 0: warning, 1: info, 2: debug
 

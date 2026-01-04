@@ -26,8 +26,10 @@ import hydra
 from omegaconf import DictConfig
 from utils.log_util import set_logging
 from loader import load_instance
+from diffqp import ContactQPTorch
 
 FIX_HAND_LOCAL_CP = False
+NO_ADMM = True
 
 torch.set_default_device("cpu")
 
@@ -373,7 +375,11 @@ def qpos_mj2wp(qpos: np.ndarray):
     r2 = R.from_rotvec(np.array([0, 0, 1]) * np.pi)
     rq = (r2 * r1).as_quat(scalar_first=True)
     
+    # allegro
     fq = quaternion.as_quat_array(qpos[3:7]) * quaternion.as_quat_array(rq)
+    # shadow hand
+    # fq = quaternion.as_quat_array(qpos[3:7])
+    # ret[:3] += quaternion.as_rotation_matrix(fq) @ np.array([0, 0, 0.034])
     ret[3:7] = quaternion.as_float_array(fq)
     
     # move real part to the back
@@ -395,6 +401,7 @@ def qpos_wp2mj(qpos: np.ndarray):
     rq = (r2 * r1).as_quat(scalar_first=True)
     
     fq = quaternion.as_quat_array(ret[3:7]) / quaternion.as_quat_array(rq)
+    # fq = quaternion.as_quat_array(ret[3:7])
     ret[3:7] = quaternion.as_float_array(fq)
     
     return ret
@@ -412,7 +419,7 @@ def init_sim_wp(cfg: dict, grasp_data: dict):
     parse_mjcf(
         cfg.hand.xml_path,
         builder,
-        visual_classes=['palm_visual', 'base_visual', 'proximal_visual', 'medial_visual', 'distal_visual', 'fingertip_visual', 'thumbtip_visual', 'visual'],
+        visual_classes=['palm_visual', 'base_visual', 'proximal_visual', 'medial_visual', 'distal_visual', 'fingertip_visual', 'thumbtip_visual', 'visual', 'plastic_visual'],
         # collider_classes=["plastic_collision"],
         floating=True,
         density=1e5,  # NOTE: If density==1e6, the simluation will be unstable
@@ -552,6 +559,7 @@ class QPSingle(torch.autograd.Function):
         M = np.diag([1., 1., 1., s**2, s**2, s**2])
         
         P_matrix = flatten_param2force.T @ M @ flatten_param2force
+        # P_matrix += 1e-1 * np.eye(P_matrix.shape[0])
         q_matrix = 2. * gravity @ M @ flatten_param2force
         
         solution = solve_qp(
@@ -704,7 +712,8 @@ def main(cfg: DictConfig):
         print("contact points from warp:")
         print(cp_h_wp)
 
-    qpsolver = QPSingleSolver(cfg.miu_coeff)
+    # qpsolver = QPSingleSolver(cfg.miu_coeff)
+    qpsolver = ContactQPTorch(cfg.miu_coeff)
     # n_qp = 4
     # qpsolvers = [QPSingleSolver(cfg.miu_coeff) for _ in range(n_qp)]
     # ext_wrenches = np.zeros((n_qp, 6))
@@ -726,6 +735,7 @@ def main(cfg: DictConfig):
     renderer.render(state_wp)
     # render contact points cp_wp
     renderer.render_points('contact_points', cp_o_cpu.numpy(), radius=5e-3, colors=(1.0, 0.0, 0.0))
+    renderer.render_points('hand_points', cp_h.detach().numpy(), radius=5e-3, colors=(1.0, 0.0, 0.0))
     renderer.render_mesh('object', points=obj_wp.points.numpy(), indices=obj_wp.indices.numpy(), colors=(0.8, 0.8, 0.8))
     renderer.end_frame()
     qp_res = []
@@ -769,23 +779,33 @@ def main(cfg: DictConfig):
             print(f"Step {iter}, primal step {ii}, QP wrench error: {res.item()}")
             res.backward()
             with torch.no_grad():
-                rho = cfg.rho * (1. + iter / cfg.num_step * 9.)
+                rho = cfg.rho * (1. - iter / cfg.num_step) + iter / cfg.num_step * cfg.rho_final
                 # rho = cfg.rho
+                print(torch.linalg.norm(cp_tmp.grad), torch.linalg.norm(cp_tmp - cp_h - lam))
                 cp_tmp.grad += rho * (cp_tmp - cp_h - lam)
                 # project gradient to tangential plane
                 cp_tmp.grad -= torch.sum(cp_tmp.grad * cn_o, dim=1, keepdim=True) * cn_o
-                cp_tmp -= cfg.alpha * cp_tmp.grad
+                if not NO_ADMM:
+                    alpha = cfg.alpha
+                    cp_tmp -= alpha * cp_tmp.grad
                 # project to object
                 closest, _, tri_vert, tri_norm = get_closest_triangles(obj_mesh, cp_tmp.detach().numpy(), obj_vert, obj_norm, obj_face)
                 cp_tmp.copy_(torch.from_numpy(closest))
                 # grad_step1_np = cp_tmp_wp.grad.numpy()
                 cp_o_cpu[:] = cp_tmp
         
+        renderer.begin_frame(float(2 * iter + 1) * 0.4)
+        renderer.render(state_wp)
+        renderer.render_points('contact_points', cp_o_cpu.numpy(), radius=5e-3, colors=(1.0, 0.0, 0.0))
+        renderer.render_points('hand_points', cp_h.detach().numpy(), radius=5e-3, colors=(1.0, 0.0, 0.0))
+        renderer.render_mesh('object', points=obj_wp.points.numpy(), indices=obj_wp.indices.numpy(), colors=(0.8, 0.8, 0.8))
+        renderer.end_frame()
+        
         # ADMM step 2: fix cp_o_wp, optimize q
         with torch.no_grad():
             cp_tmp = cp_o_cpu - lam
         # update hand_cpn_b
-        if not FIX_HAND_LOCAL_CP:
+        if not FIX_HAND_LOCAL_CP and not NO_ADMM:
             _, pos_proj, _, norm_proj = project_to_hand(cp_tmp.detach().numpy(), hand_cbody, sim_env, hand_meshes, "visual")
             hand_cpn_b_np[:, :3] = pos_proj
             hand_cpn_b_np[:, 3:] = norm_proj
@@ -808,13 +828,15 @@ def main(cfg: DictConfig):
         with torch.no_grad():
             cpn_h = sim_env.transform_cpn_b2w(hand_cbody, hand_cpn_b_np)
             cp_h.copy_(torch.from_numpy(cpn_h[:, :3]))
-            lam += cp_h - cp_o_cpu
+            if not NO_ADMM:
+                lam += cp_h - cp_o_cpu
         print(f"Step {iter}, lam norm: {lam.norm().item()}")
         
         
-        renderer.begin_frame(float(iter + 1) * 0.4)
+        renderer.begin_frame(float(2 * iter + 2) * 0.4)
         renderer.render(state_wp)
         renderer.render_points('contact_points', cp_o_cpu.numpy(), radius=5e-3, colors=(1.0, 0.0, 0.0))
+        renderer.render_points('hand_points', cp_h.detach().numpy(), radius=5e-3, colors=(1.0, 0.0, 0.0))
         renderer.render_mesh('object', points=obj_wp.points.numpy(), indices=obj_wp.indices.numpy(), colors=(0.8, 0.8, 0.8))
         # # visualize gradient cp_h_wp.grad
         # cp_st_vis = cp_h_wp.numpy()

@@ -370,6 +370,8 @@ def operate_init(cfg):
                             "ext_wrench": ret_dict["ext_wrench"][count],
                             "scene_path": obj_sample["scene_path"][o_id],
                             "n_evo": np_array32([ret_dict["n_evo"][count]]),
+                            "obj_pose": ret_dict["obj_pose"][count],
+                            "obj_scale": ret_dict["obj_scale"][count],
                         },
                     )
         logging.info("Finish initialization.")

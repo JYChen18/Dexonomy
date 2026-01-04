@@ -462,6 +462,7 @@ def _single_grasp(param):
     # time_forward = 0.
     # time_backward = 0.
     # res_all = []
+    terminated = False
     for iter in range(grasp_cfg.step):
         cp = torch.zeros((NC, 3), requires_grad=True)
         with torch.no_grad(): cp[:] = cp_o
@@ -477,18 +478,25 @@ def _single_grasp(param):
                 cp, tri_vert, tri_norm
             )
             cn_o = - cn_o
-            res = qpsolver.solve(
-                cp_o,
-                cn_o,
-                grasp_data['ext_wrench'],
-                grasp_data['ext_center'],
-            )
+            try:
+                res = qpsolver.solve(
+                    cp_o,
+                    cn_o,
+                    grasp_data['ext_wrench'],
+                    grasp_data['ext_center'],
+                )
+                if res == None:
+                    terminated = True
+                    break
+            except:
+                terminated = True
+                break
             # res_all.append(res.detach().item())
             # time_forward += time.time() - pre_time_forward
             # pre_time_backward = time.time()
             res.backward()
             with torch.no_grad():
-                rho = grasp_cfg.rho_admm * (1. + iter / grasp_cfg.step * 9.)
+                rho = grasp_cfg.rho_admm
                 cp.grad += rho * (cp - cp_h - lam)
                 # project grad to plane
                 cp.grad -= torch.sum(cp.grad * cn_o, dim=-1, keepdim=True) * cn_o
@@ -499,6 +507,7 @@ def _single_grasp(param):
             # time_backward += time.time() - pre_time_backward
         # end_time = time.time()
         # time_step1 += end_time - pre_time
+        if terminated: break
         # ADMM step 2
         # pre_time = time.time()
         with torch.no_grad():
@@ -524,6 +533,21 @@ def _single_grasp(param):
             cp_h.copy_(torch.from_numpy(cpn_h[:, :3]))
             lam += cp_h - cp_o
 
+    if terminated: # fallback
+        sim_env.reset_qpos(grasp_data["grasp_qpos"][0])
+        hand_cbody, obj_cpn_w = grasp_data["hand_cbody"], grasp_data["obj_cpn_w"]
+        hand_cpn_b = sim_env.transform_cpn_w2b(hand_cbody, grasp_data["hand_cpn_w"])
+        for ii in range(20):
+            curr_diff = sim_env.apply_contact_forces(hand_cbody, hand_cpn_b, obj_cpn_w)
+            sim_env.step_sim(10)
+            if ii == 0 or np.max(prev_diff - curr_diff) > 1e-4:
+                prev_diff = np.copy(curr_diff)
+                continue
+            else:
+                prev_diff = np.copy(curr_diff)
+            if grasp_filter.early_stop():
+                break
+    
     grasp_data["grasp_qpos"] = np_array32(sim_env.get_hand_qpos())[None]
 
     # print(f"Time step 1: {time_step1:.3f}, Time step 2: {time_step2:.3f}")

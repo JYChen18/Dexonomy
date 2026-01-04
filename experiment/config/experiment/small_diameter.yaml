@@ -1,0 +1,9 @@
+# @package _global_
+# exp_name: all_new_shadow
+exp_name: admm_12_31_0_shadow
+stage_name: init_data
+tmpl_name: 2_Small_Diameter
+
+obj_name: sem_Flashlight_d3afd0ef3bf3b87a2c4a81f1d7e1fb38
+scale: 0.14
+instance_name: 1_47_grasp

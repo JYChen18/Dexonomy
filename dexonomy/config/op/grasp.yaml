@@ -6,14 +6,14 @@ grasp:
     limit:
       thre: 0.0  # max value out of the joint qpos limit
     collision: 
-      hh_thre: -2e-3  # min hand-hand distance for collision-free grasp
-      ho_thre: -2e-3  # min hand-object distance for collision-free grasp
+      hh_thre: 0.  # min hand-hand distance for collision-free grasp
+      ho_thre: 0.  # min hand-object distance for collision-free grasp
     contact: 
       thre: 0.002  # max hand-object distance for a valid contact
       check_body: True  # check if the required contact bodies are in contact
     qp:
       thre: 0.001  # the qp error should be less than this threshold
-      miu_coef: [0.6, 0.0]  # tangential and torsional friction coefficient
+      miu_coef: [0.6, 0.02]  # tangential and torsional friction coefficient
   
 pregrasp:
   step: 20
