@@ -4,8 +4,11 @@ grasp:
   process_per_gpu: 4 # only used when device is cuda
   step: 20 # admm step
   substep: 10 # mujoco sim substep
-  step_obj: 10 # steps for contact points on objects
-  step_hand: 10 # steps for hand
+  step_obj: 3 # steps for contact points on objects
+  step_hand: 5 # steps for hand
+  # for better performance, but slower
+  # step_obj: 10
+  # step_hand: 10 
   cdist: 0.001    # target hand-object contact distance
   # rho_admm: 1e-1
   # lr_obj: 2e-3

@@ -231,6 +231,7 @@ def project_to_hand(
   hand_cbody: List[str], # (N,)
   env: MuJoCo_OptEnv,
   meshes: List[trimesh.Trimesh],
+  proxyes: List[trimesh.proximity.ProximityQuery],
   geom_filter: str = "all"
   ):
     q_world = np.zeros_like(pts)
@@ -314,8 +315,10 @@ def project_to_hand(
             q_cap = np.concatenate([xy_cap, z_cap[...,None]], axis=-1)
             q_local = np.where(to_side[..., None], q_side, q_cap)
         elif g_type == mujoco.mjtGeom.mjGEOM_MESH:
-            mesh = meshes[g_id]
-            q_local, dist, _ = trimesh.proximity.closest_point(mesh, p_local)
+            # mesh = meshes[g_id]
+            # q_local, dist, _ = trimesh.proximity.closest_point(mesh, p_local)
+            proxy = proxyes[g_id]
+            q_local, dist, _ = proxy.on_surface(p_local)
         else:
             raise NotImplementedError(f"geom type {g_type} not supported yet")
             
@@ -446,6 +449,7 @@ def _single_grasp(param):
     hand_cpn_w = grasp_data["hand_cpn_w"]
     hand_cpn_b = sim_env.transform_cpn_w2b(hand_cbody, grasp_data["hand_cpn_w"])
     hand_meshes = create_hand_trimesh(sim_env)
+    hand_proxyes = [trimesh.proximity.ProximityQuery(mesh) for mesh in hand_meshes]
     NC = len(hand_cpn_b)
     cp_o = torch.zeros((NC, 3), requires_grad=False)
     cp_h = torch.zeros((NC, 3), requires_grad=False)
@@ -513,7 +517,7 @@ def _single_grasp(param):
         with torch.no_grad():
             cp = cp_o - lam
             if not grasp_cfg.fix_hand_local_cp:
-                _, tmp = project_to_hand(cp.detach().cpu().numpy(), hand_cbody, sim_env, hand_meshes, "visual")
+                _, tmp = project_to_hand(cp.detach().cpu().numpy(), hand_cbody, sim_env, hand_meshes, hand_proxyes, "collision")
                 hand_cpn_b[:, :3] = tmp
         for ii in range(grasp_cfg.step_hand):
             curr_diff = sim_env.apply_contact_forces_no_normal(hand_cbody, hand_cpn_b, cp.detach().cpu().numpy())
@@ -556,6 +560,7 @@ def _single_grasp(param):
     # print(res_all[-1])
 
     succ_flag, ho_c = grasp_filter.forward(grasp_data)
+    grasp_data["ho_c"] = ho_c
     if not succ_flag:
         sim_env.save_debug(debug_path)
         return input_path

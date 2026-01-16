@@ -1,3 +1,4 @@
 obj_scale: False
 diversity: False
+cln_cdc: False
 cust_log_dir: ${log_dir}

@@ -1,4 +1,4 @@
-epoch: 4
+epoch: 5
 device: "cuda"  # or "cpu"
 
 object:
@@ -6,6 +6,7 @@ object:
   n_init_point: 1024  # number of initial point sampling
   n_init_inplane: 8  # number of initial inplane rotation sampling
   cfg_path: ${asset_root}/object/DGN_5k/scene_cfg/**/floating/*.npy
+  # cfg_path: ${asset_root}/object/objaverse_5k/scene_cfg/**/floating/*.npy
   # cfg_path: ${asset_root}/object/DGN_5k/scene_cfg/sem_LightBulb_8338a18d589c26d21c648623457982d0/floating/*.npy
   n_cfg: 100  # number of scene cfg to run
   mass: ${obj_mass}

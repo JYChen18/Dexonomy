@@ -300,32 +300,9 @@ def torch_normal_to_rot(normals: torch.Tensor):
     return rot
 
 def solve_qp_numpy_interface(
-        points_np, normals_np, gravity, gravity_center, 
+        grasp_matrix, gravity, 
         G_matrix, E_matrix, h_matrix, solver_type
     ):
-    from numpy.linalg import norm
-    
-    def np_normal_to_rot_func(n):
-        z = n / (norm(n, axis=-1, keepdims=True) + 1e-8)
-        t = np.zeros_like(z); t[..., 0] = 1.0
-        mask = np.abs(z[..., 0]) > 0.9; t[mask] = np.array([0., 1., 0.])
-        y = np.cross(z, t); y /= (norm(y, axis=-1, keepdims=True) + 1e-8)
-        x = np.cross(y, z)
-        return np.stack([z, x, y], axis=-1)
-
-    rot = np_normal_to_rot_func(normals_np)
-    axis_0, axis_1, axis_2 = rot[..., 0], rot[..., 1], rot[..., 2]
-    relative_pos_np = points_np - gravity_center[None]
-    # relative_pos_np /= 1e-1
-
-    grasp_matrix = np.zeros((points_np.shape[0], 6, 6))
-    grasp_matrix[:, :3, 0] = grasp_matrix[:, 3:, 3] = axis_0
-    grasp_matrix[:, :3, 1] = grasp_matrix[:, 3:, 4] = axis_1
-    grasp_matrix[:, :3, 2] = grasp_matrix[:, 3:, 5] = axis_2
-    grasp_matrix[:, 3:, 0] = np.cross(relative_pos_np, axis_0, axis=-1)
-    grasp_matrix[:, 3:, 1] = np.cross(relative_pos_np, axis_1, axis=-1)
-    grasp_matrix[:, 3:, 2] = np.cross(relative_pos_np, axis_2, axis=-1)
-
     param2force = grasp_matrix @ E_matrix 
     flatten_param2force = np.transpose(param2force, (1, 0, 2)).reshape(6, -1)
     
@@ -387,7 +364,6 @@ class ContactQPTorch:
         if self.num_contact != num_contact:
             self.num_contact = num_contact
             self.G_matrix, self.h_matrix, self.E_matrix = self._build_constraint()
-        self.num_contact = num_contact
 
     def solve(
         self,
@@ -398,19 +374,6 @@ class ContactQPTorch:
     ):
         self.set_num_contact(pos.shape[0])
         device = pos.device
-
-        pos_np = pos.detach().cpu().numpy()
-        normal_np = normal.detach().cpu().numpy()
-        
-        solution_np = solve_qp_numpy_interface(
-            pos_np, normal_np, gravity, gravity_center,
-            self.G_matrix, self.E_matrix, self.h_matrix, self.solver_type
-        )
-        
-        if solution_np is None:
-            return None
-
-        solution = torch.from_numpy(solution_np.reshape(-1, 6)).to(dtype=torch.float32, device=device)
 
         rot = torch_normal_to_rot(normal) # Shape: (N, 3, 3)
         axis_0, axis_1, axis_2 = rot[..., 0], rot[..., 1], rot[..., 2]
@@ -434,6 +397,16 @@ class ContactQPTorch:
         grasp_matrix[:, 3:, 0] = torch.linalg.cross(relative_pos, axis_0)
         grasp_matrix[:, 3:, 1] = torch.linalg.cross(relative_pos, axis_1)
         grasp_matrix[:, 3:, 2] = torch.linalg.cross(relative_pos, axis_2)
+        
+        solution_np = solve_qp_numpy_interface(
+            grasp_matrix.detach().cpu().numpy(), gravity,
+            self.G_matrix, self.E_matrix, self.h_matrix, self.solver_type
+        )
+        
+        if solution_np is None:
+            return None
+
+        solution = torch.from_numpy(solution_np.reshape(-1, 6)).to(dtype=torch.float32, device=device)
         
         E_matrix_torch = torch.from_numpy(self.E_matrix).to(dtype=torch.float32, device=device)
         gravity_torch = torch.from_numpy(gravity).to(dtype=torch.float32, device=device)

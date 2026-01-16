@@ -6,11 +6,41 @@ import logging
 import matplotlib.pyplot as plt
 import torch
 
-from dexonomy.util.file_util import get_template_names
+from dexonomy.util.file_util import get_template_names, load_yaml
 from dexonomy.util.torch_util import (
     torch_quaternion_to_matrix,
     torch_matrix_to_axis_angle,
 )
+
+
+def compute_cln_and_cdc_pd(ho_c: dict, body_group: list) -> tuple[float, float, float]:
+    """
+    Contact Link Number (CLN) and Contact Distance Consistency (CDC)
+    """
+    if ho_c is None or len(ho_c.get("dist", [])) == 0:
+        return 0., 0.
+    
+    dists = np.maximum(np.array(ho_c["dist"]), 0.)
+    pd = - np.minimum(np.array(ho_c["dist"]), 0.)
+    bodies = np.array(ho_c["bn1"])
+    
+    contact_mask = dists < 0.002
+    cbody_set = set(bodies[contact_mask])
+    cln = float(len(cbody_set))
+
+    # ===== CDC =====
+    finger_min_dist_mm = []
+    
+    for finger_links in body_group[:-1]:
+        finger_link_mask = np.isin(bodies, finger_links)
+        if np.any(finger_link_mask):
+            finger_min_dist_mm.append(float(np.min(dists[finger_link_mask]) * 1000.))
+    
+    cdc_mm = 0.
+    if len(finger_min_dist_mm) >= 2:
+        cdc_mm = float(max(finger_min_dist_mm) - min(finger_min_dist_mm))
+    
+    return cln, cdc_mm, max(pd)
 
 
 def draw_obj_scale_fig(data_lst, save_path):
@@ -49,6 +79,16 @@ def read_paths(npy_path):
     data = np.load(npy_path, allow_pickle=True).item()
     return data
 
+
+def get_CLN_CDC_PD(data_list, body_group):
+    cln, cdc, pd = 0., 0., 0.
+    for data in data_list:
+        cln_tmp, cdc_tmp, pd_tmp = compute_cln_and_cdc_pd(data['ho_c'], body_group)
+        cln += cln_tmp
+        cdc += cdc_tmp
+        pd = max(pd, pd_tmp)
+
+    return cln / len(data_list), cdc / len(data_list), pd
 
 def get_diversity(data_lst):
     from sklearn.decomposition import PCA
@@ -123,7 +163,7 @@ def operate_stat(cfg):
         traj_obj = get_obj_names(traj_paths, tn)
         succ_traj_obj = get_obj_names(succ_traj_paths, tn)
 
-        if len(succ_grasp_paths) != 0 and (cfg.op.obj_scale or cfg.op.diversity):
+        if len(succ_grasp_paths) != 0 and (cfg.op.obj_scale or cfg.op.diversity or cfg.op.cln_cdc):
             with multiprocessing.Pool(processes=cfg.n_worker) as pool:
                 jobs = pool.imap_unordered(read_paths, succ_grasp_paths)
                 data_lst = list(jobs)
@@ -136,6 +176,10 @@ def operate_stat(cfg):
 
             if cfg.op.diversity:
                 pca_eigenvalue = get_diversity(data_lst)
+                
+            if cfg.op.cln_cdc:
+                body_group = load_yaml(cfg.hand_bgroup_path)["body_group"]
+                cln, cdc, pd = get_CLN_CDC_PD(data_lst, body_group)
 
         traj1 = len(succ_grasp_paths) if len(succ_grasp_paths) > 0 else len(grasp_paths)
         traj2 = len(grasp_obj) if len(grasp_obj) > 0 else len(succ_grasp_obj)
@@ -165,3 +209,5 @@ def operate_stat(cfg):
         logging.info(object_line)
         if cfg.op.diversity:
             logging.info(f"Diversity: {pca_eigenvalue}")
+        if cfg.op.cln_cdc:
+            logging.info(f"CLN: {cln}, CDC: {cdc}, PD: {pd}")

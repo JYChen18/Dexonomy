@@ -749,7 +749,8 @@ class MuJoCo_EvalEnv(MuJoCo_BaseEnv):
     def _set_friction(self, miu_coef):
         self._spec.option.cone = mujoco.mjtCone.mjCONE_ELLIPTIC
         if self.hard:
-            noslip, impratio = 0, 1
+            # noslip, impratio = 0, 1
+            noslip, impratio = 2, 10
             miu_coef[0] *= 0.5
             miu_coef[1] *= 0.1
         else:

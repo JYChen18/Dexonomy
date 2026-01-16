@@ -120,6 +120,7 @@ def _single_grasp(param):
     grasp_data["grasp_qpos"] = np_array32(sim_env.get_hand_qpos())[None]
 
     succ_flag, ho_c = grasp_filter.forward(grasp_data)
+    grasp_data["ho_c"] = ho_c
     if not succ_flag:
         sim_env.save_debug(debug_path)
         return input_path
