@@ -71,6 +71,7 @@ def get_obj_names(path_lst, template_name):
     obj_name_lst = []
     for p in path_lst:
         obj_name = os.path.dirname(p).split(template_name + "/")[1]
+        obj_name = obj_name.replace("_floating", "/floating")
         obj_name_lst.append(obj_name)
     return list(set(obj_name_lst))
 

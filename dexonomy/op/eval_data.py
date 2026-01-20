@@ -3,6 +3,7 @@ import multiprocessing
 import logging
 import glob
 import numpy as np
+from hydra.utils import to_absolute_path
 
 from dexonomy.sim import MuJoCo_EvalEnv, HandCfg, MuJoCo_EvalCfg
 from dexonomy.util.file_util import load_scene_cfg, load_json, safe_wrapper
@@ -15,20 +16,58 @@ def _single_eval(param):
     data_dir = cfg.traj_dir if not cfg.skip_traj else cfg.grasp_dir
     op_cfg, hand_cfg = cfg.op, cfg.hand
     grasp_data = np.load(input_path, allow_pickle=True).item()
-    scene_cfg = load_scene_cfg(grasp_data["scene_path"])
+    
+    # start from grasp pose rather than pre grasp pose
+    grasp_data["pregrasp_qpos"] = grasp_data["grasp_qpos"].copy()
+    
+    if cfg.legacy_api:
+        if "evolution_num" in grasp_data:
+            key_map = {"evolution_num": "n_evo",
+                      "hand_type": "hand_name",
+                      "hand_template_name": "tmpl_name",
+                      "hand_worldframe_contacts": "hand_cpn_w",
+                      "hand_contact_body_names": "hand_cbody",
+                      "necessary_contact_body_names": "required_cbody",
+                      "obj_worldframe_contacts": "obj_cpn_w"
+                      }
+            grasp_data = {key_map.get(k, k): v for k, v in grasp_data.items()}
+            grasp_data['grasp_qpos'] = grasp_data['grasp_qpos'][None,...]
+            grasp_data['squeeze_qpos'] = grasp_data['squeeze_qpos'][None,...]
+            grasp_data['pregrasp_qpos'] = grasp_data['pregrasp_qpos'][None,...]
+            # scene_cfg change to absolute path recursively
+            def update_relative_path(d: dict):
+                for k, v in d.items():
+                    if isinstance(v, dict):
+                        update_relative_path(v)
+                    elif k.endswith("_path") and isinstance(v, str):
+                        d[k] = os.path.abspath(to_absolute_path(v))
+                return
+            update_relative_path(grasp_data['scene_cfg'])
+        scene_cfg = grasp_data['scene_cfg']
+    else:
+        scene_cfg = load_scene_cfg(grasp_data["scene_path"])
 
     plane_flag = False
     for o_cfg in scene_cfg["scene"].values():
         if o_cfg["type"] == "rigid_object":
-            o_info = load_json(o_cfg["info_path"])
+            if cfg.legacy_api:
+                info_path = o_cfg["urdf_path"].replace("urdf/coacd.urdf", "info/simplified.json")
+                o_info = load_json(info_path)
+            else:
+                o_info = load_json(o_cfg["info_path"])
             o_coef = o_info["mass"] / (o_info["density"] * (o_info["scale"] ** 3))
             o_cfg["density"] = cfg.obj_mass / (o_coef * np.prod(o_cfg["scale"]))
         elif o_cfg["type"] == "plane":
             plane_flag = True
     if not cfg.skip_traj and not plane_flag:
-        logging.warning(
-            f"Using an arm but no table is in scene cfg: {grasp_data['scene_path']}"
-        )
+        if cfg.legacy_api:
+            logging.warning(
+              f"Using an arm but no table is in scene cfg: {grasp_data['scene_cfg']}"
+            )
+        else:
+            logging.warning(
+                f"Using an arm but no table is in scene cfg: {grasp_data['scene_path']}"
+            )
 
     sim_env = MuJoCo_EvalEnv(
         hand_cfg=(
@@ -73,14 +112,24 @@ def _single_eval(param):
         if not cfg.skip_traj:
             output_path = input_path.replace(data_dir, cfg.succ_traj_dir)
             os.makedirs(os.path.dirname(output_path), exist_ok=True)
-            np.save(
-                output_path,
-                {
-                    "scene_path": grasp_data["scene_path"],
-                    "traj_state_qpos": real_state_qpos,
-                    "traj_ctrl_qpos": real_ctrl_qpos,
-                },
-            )
+            if cfg.legacy_api:
+                np.save(
+                    output_path,
+                    {
+                        "scene_cfg": grasp_data["scene_cfg"],
+                        "traj_state_qpos": real_state_qpos,
+                        "traj_ctrl_qpos": real_ctrl_qpos,
+                    },
+                )
+            else:
+                np.save(
+                    output_path,
+                    {
+                        "scene_path": grasp_data["scene_path"],
+                        "traj_state_qpos": real_state_qpos,
+                        "traj_ctrl_qpos": real_ctrl_qpos,
+                    },
+                )
         else:
             output_path = input_path.replace(data_dir, cfg.succ_grasp_dir)
             os.makedirs(os.path.dirname(output_path), exist_ok=True)

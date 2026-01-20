@@ -4,6 +4,8 @@ skip_done: True   # skip if the result already exists, used for op=init, grasp a
 skip_traj: True   # skip trajectory generation and evaluation
 skip_grasp_eval: False  # skip grasp evaluation
 
+legacy_api: False
+
 # GPU configurations
 init_gpu: [1,2,3] 
 traj_gpu: [4,5,6]  # only used when skip_traj is False

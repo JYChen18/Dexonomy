@@ -10,14 +10,18 @@ import time
 from omegaconf import OmegaConf
 from scipy.spatial.transform import Rotation as R
 from typing import List,Tuple
+from hydra.utils import to_absolute_path
 
 from dexonomy.sim import MuJoCo_OptEnv, MuJoCo_OptCfg, HandCfg
 from dexonomy.qp.qp_single import ContactQP, ContactQPTorch
 from dexonomy.util.np_util import np_array32
 from dexonomy.util.file_util import load_scene_cfg, safe_wrapper
 
-def load_obj_trimesh(data: dict):
-    scene_cfg = load_scene_cfg(data["scene_path"])["scene"]
+def load_obj_trimesh(data: dict, legacy_api=False):
+    if legacy_api:
+        scene_cfg = data["scene_cfg"]["scene"]
+    else:
+        scene_cfg = load_scene_cfg(data["scene_path"])["scene"]
     assert len(scene_cfg) == 1, "Only single object is supported now."
     obj_name, obj_cfg = list(scene_cfg.items())[0]
     assert obj_cfg['type'] == 'rigid_object', "Only rigid object is supported now"
@@ -422,13 +426,40 @@ def _single_grasp(param):
             logging.warning(f"Worker {os.getpid()}: CUDA not available, using CPU")
         torch.set_default_device(device)
     grasp_path = input_path.replace(cfg.init_dir, cfg.grasp_dir)
+    if cfg.legacy_api: # _floating to /floating
+        grasp_path = grasp_path.replace("_floating", "/floating")
     grasp_cfg, pregrasp_cfg = cfg.op.grasp, cfg.op.pregrasp
-    debug_path = input_path.replace(cfg.init_dir, cfg.debug_dir)
+    debug_path = grasp_path.replace(cfg.grasp_dir, cfg.debug_dir)
 
     grasp_data = np.load(input_path, allow_pickle=True).item()
+    if cfg.legacy_api:
+        key_map = {"evolution_num": "n_evo",
+                  "hand_type": "hand_name",
+                  "hand_template_name": "tmpl_name",
+                  "hand_worldframe_contacts": "hand_cpn_w",
+                  "hand_contact_body_names": "hand_cbody",
+                  "necessary_contact_body_names": "required_cbody",
+                  "obj_worldframe_contacts": "obj_cpn_w"
+                  }
+        grasp_data = {key_map.get(k, k): v for k, v in grasp_data.items()}
+        grasp_data['grasp_qpos'] = grasp_data['grasp_qpos'][None,...]
+        grasp_data['squeeze_qpos'] = grasp_data['squeeze_qpos'][None,...]
+        grasp_data['pregrasp_qpos'] = grasp_data['pregrasp_qpos'][None,...]
+        # scene_cfg change to absolute path recursively
+        def update_relative_path(d: dict):
+            for k, v in d.items():
+                if isinstance(v, dict):
+                    update_relative_path(v)
+                elif k.endswith("_path") and isinstance(v, str):
+                    d[k] = os.path.abspath(to_absolute_path(v))
+            return
+        update_relative_path(grasp_data['scene_cfg'])
+        scene_cfg = grasp_data['scene_cfg']
+    else:
+        scene_cfg = load_scene_cfg(grasp_data["scene_path"])
     sim_env = MuJoCo_OptEnv(
         hand_cfg=HandCfg(xml_path=cfg.hand.xml_path, freejoint=True),
-        scene_cfg=load_scene_cfg(grasp_data["scene_path"]),
+        scene_cfg=scene_cfg,
         sim_cfg=MuJoCo_OptCfg(obj_margin=pregrasp_cfg.cdist),
         debug_render=cfg.debug_render,
         debug_view=cfg.debug_view,
@@ -445,7 +476,7 @@ def _single_grasp(param):
 
     # Generate grasp qpos
     hand_cbody, obj_cpn_w = grasp_data["hand_cbody"], grasp_data["obj_cpn_w"]
-    obj_mesh, obj_vert, obj_norm, obj_face = load_obj_trimesh(grasp_data)
+    obj_mesh, obj_vert, obj_norm, obj_face = load_obj_trimesh(grasp_data, cfg.legacy_api)
     hand_cpn_w = grasp_data["hand_cpn_w"]
     hand_cpn_b = sim_env.transform_cpn_w2b(hand_cbody, grasp_data["hand_cpn_w"])
     hand_meshes = create_hand_trimesh(sim_env)
@@ -535,7 +566,12 @@ def _single_grasp(param):
         with torch.no_grad():
             cpn_h = sim_env.transform_cpn_b2w(hand_cbody, hand_cpn_b)
             cp_h.copy_(torch.from_numpy(cpn_h[:, :3]))
-            lam += cp_h - cp_o
+            dist = (cp_h - cp_o)
+            lam_norm = torch.linalg.norm(lam, dim=-1, keepdim=True)
+            condition = lam_norm > 2e-2
+            # condition = (dist.abs() > 1e-2) & (lam.abs() > 5e-2)
+            lam = lam + dist
+            lam = torch.where(condition, 0., lam)
 
     if terminated: # fallback
         sim_env.reset_qpos(grasp_data["grasp_qpos"][0])

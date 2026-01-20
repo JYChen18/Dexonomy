@@ -18,17 +18,22 @@ def _single_vusd(param):
 
     data = np.load(npy_path, allow_pickle=True).item()
 
+    if cfg.legacy_api:
+        scene_cfg = data["scene_cfg"]
+    else:
+        scene_cfg = load_scene_cfg(data["scene_path"])
+    
     if op_cfg.data == "succ_traj":
         vis_env = MuJoCo_VisEnv(
             hand_cfg=HandCfg(cfg.hand.arm_hand.xml_path),
-            scene_cfg=load_scene_cfg(data["scene_path"]),
+            scene_cfg=scene_cfg,
             sim_cfg=MuJoCo_EvalCfg(),
             vis_mode=op_cfg.hand.mode,
         )
     else:
         vis_env = MuJoCo_VisEnv(
             hand_cfg=HandCfg(cfg.hand.xml_path, freejoint=True),
-            scene_cfg=load_scene_cfg(data["scene_path"]),
+            scene_cfg=scene_cfg,
             sim_cfg=MuJoCo_OptCfg(),
             vis_mode=op_cfg.hand.mode,
         )
