@@ -2,16 +2,18 @@ grasp:
   device: "cpu"
   gpus: [0, 1, 2, 3] # only used when device is cuda
   process_per_gpu: 4 # only used when device is cuda
-  step: 100 # 20  # admm step
-  substep: 10 # mujoco sim substep
-  # step_obj: 3 # steps for contact points on objects
-  # step_hand: 5 # steps for hand
-  # for better performance, but slower
-  step_obj: 2 # 10
-  step_hand: 2 # 10
-  cdist: 0.001    # target hand-object contact distance
-  rho_admm: 1e2 # 1e1
+  step: 50
+  substep: 10
+  step_obj: 1
+  step_hand: 1
+  rho_admm: 1e3
   lr_obj: 2e-4
+  square_res: False
+  # for shadow hand dexonomy
+  # step: 100
+  # rho_admm: 1e2
+  # square_res: True
+  cdist: 0.001    # target hand-object contact distance
   fix_hand_local_cp: False
   opt_miu_coef: [0.1, 0]
   filter:

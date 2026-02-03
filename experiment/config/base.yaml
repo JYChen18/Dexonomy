@@ -13,17 +13,27 @@ scale: 0.08
 # instance_name: 0_44_grasp
 instance_name: 2_41_grasp
 
+legacy_api: False
+
 miu_coeff: [0.1, 0]
 cdist: 1e-3 # for mujoco's collision detection
 ho_thre: 2e-3
 
-num_step: 20
-substep: 10
-step_cp: 10
+num_step: 100 # 40
+substep: 1
+step_cp: 1
 step_mj: 10
-rho: 1e1
-rho_final: 1e1
+rho: 1e2 # 1e3
+rho_final: 1e2 # 1e3
 alpha: 2e-4
+
+# num_step: 20
+# substep: 10
+# step_cp: 10
+# step_mj: 10
+# rho: 1e2
+# rho_final: 1e2
+# alpha: 2e-4
 
 verbose: 1 # 0: warning, 1: info, 2: debug
 

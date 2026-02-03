@@ -26,7 +26,6 @@ import hydra
 from omegaconf import DictConfig
 from utils.log_util import set_logging
 from loader import load_instance
-from loader_jy import load_instance_legacy
 from diffqp import ContactQPTorch
 import time
 # from scalene import scalene_profiler
@@ -34,14 +33,12 @@ import time
 FIX_HAND_LOCAL_CP = False
 NO_ADMM = False
 WARP_VIS = True
+SOLVE_SIX = False
 
 torch.set_default_device("cpu")
 
-def load_obj_trimesh(data: dict, legacy_api=False):
-    if legacy_api:
-        scene_cfg = data["scene_cfg"]["scene"]
-    else:
-        scene_cfg = load_scene_cfg(data["scene_path"])["scene"]
+def load_obj_trimesh(data: dict):
+    scene_cfg = load_scene_cfg(data["scene_path"])["scene"]
     assert len(scene_cfg) == 1, "Only single object is supported now."
     obj_name, obj_cfg = list(scene_cfg.items())[0]
     assert obj_cfg['type'] == 'rigid_object', "Only rigid object is supported now"
@@ -363,13 +360,9 @@ def project_to_hand(
     return q_world, q_body, n_world, n_body
 
 def init_sim_mujoco(cfg: dict, grasp_data: dict):
-    if cfg.legacy_api:
-        scene_cfg = grasp_data["scene_cfg"]
-    else:
-        scene_cfg = load_scene_cfg(grasp_data["scene_path"])
     sim_env = MuJoCo_OptQEnv(
         hand_cfg=HandCfg(xml_path=cfg.hand.xml_path, freejoint=True),
-        scene_cfg=scene_cfg,
+        scene_cfg=load_scene_cfg(grasp_data["scene_path"]),
         sim_cfg=MuJoCo_OptQCfg(obj_margin=cfg.cdist),
         debug_render=cfg.debug_render,
         debug_view=cfg.debug_view,
@@ -381,7 +374,7 @@ def init_sim_mujoco(cfg: dict, grasp_data: dict):
 wp.config.quiet = True
 wp.init()
 
-def qpos_mj2wp(qpos: np.ndarray, hand='allegro'):
+def qpos_mj2wp(qpos: np.ndarray):
     # input: qpos or grad_qpos, real part first
     ret = qpos.copy()
     # don't know why, but this works
@@ -390,12 +383,10 @@ def qpos_mj2wp(qpos: np.ndarray, hand='allegro'):
     rq = (r2 * r1).as_quat(scalar_first=True)
     
     # allegro
-    if hand == 'allegro':
-        fq = quaternion.as_quat_array(qpos[3:7]) * quaternion.as_quat_array(rq)
+    fq = quaternion.as_quat_array(qpos[3:7]) * quaternion.as_quat_array(rq)
     # shadow hand
-    elif hand == 'shadow':
-        fq = quaternion.as_quat_array(qpos[3:7])
-        ret[:3] += quaternion.as_rotation_matrix(fq) @ np.array([0, 0, 0.034])
+    # fq = quaternion.as_quat_array(qpos[3:7])
+    # ret[:3] += quaternion.as_rotation_matrix(fq) @ np.array([0, 0, 0.034])
     
     ret[3:7] = quaternion.as_float_array(fq)
     
@@ -488,7 +479,7 @@ def init_sim_wp(cfg: dict, grasp_data: dict):
     
     # assign initial qpos
     qpos = grasp_data["grasp_qpos"][0]
-    qpos_wp = qpos_mj2wp(qpos, hand=cfg.hand.name)
+    qpos_wp = qpos_mj2wp(qpos)
     
     model.joint_q.assign(qpos_wp)
     state.joint_q.assign(qpos_wp)
@@ -496,10 +487,7 @@ def init_sim_wp(cfg: dict, grasp_data: dict):
     wp.sim.eval_fk(model, model.joint_q, model.joint_qd, None, state)
     
     # load object mesh
-    if cfg.legacy_api:
-        scene_cfg = grasp_data["scene_cfg"]["scene"]
-    else:
-        scene_cfg = load_scene_cfg(grasp_data["scene_path"])["scene"]
+    scene_cfg = load_scene_cfg(grasp_data["scene_path"])["scene"]
     assert len(scene_cfg) == 1, "Only single object is supported in warp sim."
     obj_name, obj_cfg = list(scene_cfg.items())[0]
     assert obj_cfg['type'] == 'rigid_object', "Only rigid object is supported in warp sim."
@@ -707,14 +695,73 @@ def init_local_contact(data: dict,
     
     return hand_cpn_b, hand_cbody, obj_cpn_w
 
+def get_hand_qpos(palm_dir_str, finger_dir_str):
+    """
+    根据手掌和手指方向计算 MuJoCo 格式的四元数 [w, x, y, z]
+    :param palm_dir_str: 主轴方向，例如 '+z', '-x'
+    :param finger_dir_str: 副轴方向，例如 '+y' (必须与 palm_dir_str 正交)
+    :return: qpos_quat [w, x, y, z]
+    """
+    
+    # 1. 解析方向字符串到向量
+    axis_map = {
+        'x': np.array([1., 0., 0.]),
+        'y': np.array([0., 1., 0.]),
+        'z': np.array([0., 0., 1.])
+    }
+    
+    def parse_dir(d_str):
+        vec = axis_map[d_str[-1]].copy()
+        if d_str[0] == '-':
+            vec *= -1
+        return vec
+
+    target_z = parse_dir(palm_dir_str)   # 目标手掌方向 (Local Z)
+    target_x_temp = parse_dir(finger_dir_str) # 目标手指方向 (Local X)
+
+    # 2. 检查合法性 (手掌和手指不能平行)
+    # 如果两个向量平行或反向，叉积为0，无法构成坐标系
+    if np.allclose(np.abs(np.dot(target_z, target_x_temp)), 1.0):
+        raise ValueError(f"Error: Palm ({palm_dir_str}) and Finger ({finger_dir_str}) directions cannot be parallel!")
+
+    # 3. 构建正交基 (Gram-Schmidt 正交化)
+    # 我们以 Palm (Z) 为主约束，Finger (X) 为副约束
+    
+    # 计算目标 Y 轴 (Thumb) = Z (cross) X
+    # 这一步保证了 Y 垂直于 Z 和 X
+    target_y = np.cross(target_z, target_x_temp)
+    target_y = target_y / np.linalg.norm(target_y) # 归一化
+    
+    # 重新计算目标 X 轴 = Y (cross) Z
+    # 这一步保证了 X 严格垂直于 Z，且尽可能接近用户输入的 finger_dir
+    target_x = np.cross(target_y, target_z)
+    target_x = target_x / np.linalg.norm(target_x)
+
+    # 4. 构建旋转矩阵
+    # 旋转矩阵的列向量就是目标坐标系的基向量 [x_axis, y_axis, z_axis]
+    rot_matrix = np.column_stack((target_x, target_y, target_z))
+    
+    # 5. 转换为四元数
+    r = R.from_matrix(rot_matrix)
+    q_xyzw = r.as_quat()
+    
+    # 6. 转换为 MuJoCo 格式 [w, x, y, z]
+    q_wxyz = np.concatenate([q_xyzw[[3]], q_xyzw[:3]])
+    
+    return q_wxyz
 
 @hydra.main(config_path="config", config_name="base", version_base=None)
 def main(cfg: DictConfig):
     set_logging(cfg.verbose)
-    if cfg.legacy_api:
-        data = load_instance_legacy(cfg)
-    else:
-        data = load_instance(cfg)
+    data = load_instance(cfg)
+    
+    dir = cfg.grasp_dir
+    dir_finger = cfg.grasp_dir_finger
+    data['grasp_qpos'][0] = np.zeros_like(data['grasp_qpos'][0])
+    data['grasp_qpos'][0]['xyz'.index(dir[-1])] = -cfg.init_offset
+    if dir[0] == '-': data['grasp_qpos'][0]['xyz'.index(dir[-1])] *= -1
+    data['grasp_qpos'][0][3:7] = get_hand_qpos(dir, dir_finger)
+    
 
     # scalene_profiler.start()
     st_time = time.time()
@@ -722,12 +769,20 @@ def main(cfg: DictConfig):
     sim_env = init_sim_mujoco(cfg, data)
     hand_meshes = create_hand_trimesh(sim_env)
     hand_proxy = [trimesh.proximity.ProximityQuery(mesh) for mesh in hand_meshes]
-    obj_mesh, obj_vert, obj_norm, obj_face = load_obj_trimesh(data, cfg.legacy_api)
+    obj_mesh, obj_vert, obj_norm, obj_face = load_obj_trimesh(data)
     obj_proxy = trimesh.proximity.ProximityQuery(obj_mesh)
     if WARP_VIS:
         model_wp, state_wp, obj_wp = init_sim_wp(cfg, data)
     hand_cpn_b, hand_cbody, obj_cpn_w = init_local_contact(data, sim_env)
     hand_cpn_b_np = hand_cpn_b.numpy()
+    # init hand local points
+    n_contact = len(data["hand_cbody"])
+    cpw_h_dummy = np.zeros((n_contact, 3))
+    cpw_h_dummy[:, 'xyz'.index(dir[-1])] = 1e6
+    if dir[0] == '-': cpw_h_dummy[:, 'xyz'.index(dir[-1])] *= -1
+    _, pos_proj, _, norm_proj = project_to_hand(cpw_h_dummy, hand_cbody, sim_env, hand_meshes, hand_proxy, "collision")
+    hand_cpn_b_np[:, :3] = pos_proj
+    hand_cpn_b_np[:, 3:] = norm_proj
     
     NC = len(hand_cpn_b)
     
@@ -744,21 +799,28 @@ def main(cfg: DictConfig):
 
     # qpsolver = QPSingleSolver(cfg.miu_coeff)
     qpsolver = ContactQPTorch(cfg.miu_coeff)
-    # n_qp = 4
-    # qpsolvers = [QPSingleSolver(cfg.miu_coeff) for _ in range(n_qp)]
-    # ext_wrenches = np.zeros((n_qp, 6))
-    # ext_wrenches[0, :3] = [0., 0., 1.]
-    # ext_wrenches[1, :3] = [2 * np.sqrt(2.) / 3., 0, - 1. / 3.]
-    # ext_wrenches[2, :3] = [- np.sqrt(2.) / 3., np.sqrt(6.) / 3., - 1. / 3.]
-    # ext_wrenches[3, :3] = [- np.sqrt(2.) / 3., - np.sqrt(6.) / 3., - 1. / 3.]
-    # ext_wrenches *= 1e-1
+    if SOLVE_SIX:
+        n_qp = 6
+        qpsolvers = [QPSingleSolver(cfg.miu_coeff) for _ in range(n_qp)]
+        ext_wrenches = np.zeros((n_qp, 6))
+        # ext_wrenches[0, :3] = [0., 0., 1.]
+        # ext_wrenches[1, :3] = [2 * np.sqrt(2.) / 3., 0, - 1. / 3.]
+        # ext_wrenches[2, :3] = [- np.sqrt(2.) / 3., np.sqrt(6.) / 3., - 1. / 3.]
+        # ext_wrenches[3, :3] = [- np.sqrt(2.) / 3., - np.sqrt(6.) / 3., - 1. / 3.]
+        ext_wrenches[0, :3] = [0., 0., 1.]
+        ext_wrenches[1, :3] = [0., 0., -1.]
+        ext_wrenches[2, :3] = [0., 1., 0.]
+        ext_wrenches[3, :3] = [0., -1., 0.]
+        ext_wrenches[4, :3] = [1., 0., 0.]
+        ext_wrenches[5, :3] = [-1., 0., 0.]
+        ext_wrenches *= 1.
 
     with torch.no_grad():
         cpn_h = sim_env.transform_cpn_b2w(hand_cbody, hand_cpn_b_np)
         cp_h.copy_(torch.from_numpy(cpn_h[:, :3]))
         closest, *_ = get_closest_triangles(obj_proxy, cp_h.detach().numpy())
-        # cp_o_cpu.copy_(torch.from_numpy(closest))
-        cp_o_cpu.copy_(torch.from_numpy(obj_cpn_w[:, :3]))
+        cp_o_cpu.copy_(torch.from_numpy(closest))
+        # cp_o_cpu.copy_(torch.from_numpy(obj_cpn_w[:, :3]))
 
     if WARP_VIS:
         renderer = wp.sim.render.SimRenderer(model_wp, "opt.usd")
@@ -767,7 +829,6 @@ def main(cfg: DictConfig):
         # render contact points cp_wp
         renderer.render_points('contact_points', cp_o_cpu.numpy(), radius=5e-3, colors=(1.0, 0.0, 0.0))
         renderer.render_points('hand_points', cp_h.detach().numpy(), radius=5e-3, colors=(1.0, 0.0, 0.0))
-        # renderer.render_points('dual_points', (cp_o_cpu - lam).detach().numpy(), radius=5e-3, colors=(0.0, 1.0, 0.0))
         renderer.render_mesh('object', points=obj_wp.points.numpy(), indices=obj_wp.indices.numpy(), colors=(0.8, 0.8, 0.8))
         renderer.end_frame()
     qp_res = []
@@ -791,25 +852,27 @@ def main(cfg: DictConfig):
             )
             cn_o = - cn_o # for QP
             # foward to torch for QP solving
-            # res_tmp = torch.zeros((1), requires_grad=True)
-            # for sid in range(n_qp):
-            #   res_tmp = res_tmp + qpsolvers[sid].solve(
-            #       cp_o,
-            #       cn_o,
-            #       ext_wrenches[sid],
-            #       data['ext_center'],
-            #   )
-            # res = res_tmp.mean()
-            res = qpsolver.solve(
-                cp_o,
-                cn_o,
-                data['ext_wrench'],
-                # np.random.rand(6) * 1e-6,
-                data['ext_center'],
-            )
+            if SOLVE_SIX:
+                res_tmp = torch.zeros((1), requires_grad=True)
+                for sid in range(n_qp):
+                  res_tmp = res_tmp + qpsolvers[sid].solve(
+                      cp_o,
+                      cn_o,
+                      ext_wrenches[sid],
+                      data['ext_center'],
+                  )
+                res = res_tmp.mean()
+            else:
+                res = qpsolver.solve(
+                    cp_o,
+                    cn_o,
+                    data['ext_wrench'],
+                    # np.random.rand(6) * 1e-6,
+                    data['ext_center'],
+                )
             qp_res.append(res.item())
             print(f"Step {iter}, primal step {ii}, QP wrench error: {res.item()}")
-            # res = res**2
+            
             res.backward()
             with torch.no_grad():
                 rho = cfg.rho * (1. - iter / cfg.num_step) + iter / cfg.num_step * cfg.rho_final
@@ -820,7 +883,10 @@ def main(cfg: DictConfig):
                 cp_tmp.grad -= torch.sum(cp_tmp.grad * cn_o, dim=1, keepdim=True) * cn_o
                 if not NO_ADMM:
                     alpha = cfg.alpha
-                    cp_tmp -= alpha * cp_tmp.grad
+                    print(alpha * torch.linalg.norm(cp_tmp.grad))
+                    fac = 1e-2 / max(alpha * torch.linalg.norm(cp_tmp.grad), 1e-2)
+                    fac = 1.
+                    cp_tmp -= alpha * fac * cp_tmp.grad
                 # project to object
                 closest, _, tri_vert, tri_norm = get_closest_triangles(obj_proxy, cp_tmp.detach().numpy(), obj_vert, obj_norm, obj_face)
                 cp_tmp.copy_(torch.from_numpy(closest))
@@ -832,7 +898,6 @@ def main(cfg: DictConfig):
             renderer.render(state_wp)
             renderer.render_points('contact_points', cp_o_cpu.numpy(), radius=5e-3, colors=(1.0, 0.0, 0.0))
             renderer.render_points('hand_points', cp_h.detach().numpy(), radius=5e-3, colors=(1.0, 0.0, 0.0))
-            # renderer.render_points('dual_points', (cp_o_cpu - lam).detach().numpy(), radius=5e-3, colors=(0.0, 1.0, 0.0))
             renderer.render_mesh('object', points=obj_wp.points.numpy(), indices=obj_wp.indices.numpy(), colors=(0.8, 0.8, 0.8))
             renderer.end_frame()
         
@@ -856,7 +921,7 @@ def main(cfg: DictConfig):
         # update to warp
         if WARP_VIS:
             qpos_mj = sim_env.get_hand_qpos()
-            qpos_wp = qpos_mj2wp(qpos_mj, hand=cfg.hand.name)
+            qpos_wp = qpos_mj2wp(qpos_mj)
             model_wp.joint_q.assign(qpos_wp)
             state_wp.joint_q.assign(qpos_wp)
             wp.sim.eval_fk(model_wp, model_wp.joint_q, model_wp.joint_qd, None, state_wp)
@@ -872,15 +937,13 @@ def main(cfg: DictConfig):
                 # condition = (dist.abs() > 1e-2) & (lam.abs() > 5e-2)
                 lam = lam + dist
                 lam = torch.where(condition, 0., lam)
-                
-        # print(f"Step {iter}, lam norm: {lam.norm().item()}")
+        print(f"Step {iter}, lam norm: {lam.norm().item()}")
         
         if WARP_VIS:
             renderer.begin_frame(float(2 * iter + 2) * 0.4)
             renderer.render(state_wp)
             renderer.render_points('contact_points', cp_o_cpu.numpy(), radius=5e-3, colors=(1.0, 0.0, 0.0))
             renderer.render_points('hand_points', cp_h.detach().numpy(), radius=5e-3, colors=(1.0, 0.0, 0.0))
-            # renderer.render_points('dual_points', (cp_o_cpu - lam).detach().numpy(), radius=5e-3, colors=(0.0, 1.0, 0.0))
             renderer.render_mesh('object', points=obj_wp.points.numpy(), indices=obj_wp.indices.numpy(), colors=(0.8, 0.8, 0.8))
             # # visualize gradient cp_h_wp.grad
             # cp_st_vis = cp_h_wp.numpy()

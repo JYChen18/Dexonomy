@@ -1,0 +1,21 @@
+# @package _global_
+# exp_name: all_new_shadow
+exp_name: Dexonomy_GRASP_small_shadow
+stage_name: graspdata
+legacy_api: True
+
+# tmpl_name: 5_Light_Tool
+# obj_name: 00a0789af02f41b3914c94c0a729471a
+# instance_name: 0_11_grasp
+
+tmpl_name: 2_Small_Diameter
+obj_name: 00a0789af02f41b3914c94c0a729471a
+instance_name: 0_23_grasp
+
+# tmpl_name: 2_Small_Diameter
+# obj_name: 02ac6d384ac248349fd8ed2af972d497
+# instance_name: 2_54_grasp
+
+# tmpl_name: 3_Medium_Wrap
+# obj_name: 02ac6d384ac248349fd8ed2af972d497
+# instance_name: 1_52_grasp

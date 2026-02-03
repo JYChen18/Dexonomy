@@ -426,8 +426,14 @@ def _single_grasp(param):
             logging.warning(f"Worker {os.getpid()}: CUDA not available, using CPU")
         torch.set_default_device(device)
     grasp_path = input_path.replace(cfg.init_dir, cfg.grasp_dir)
-    if cfg.legacy_api: # _floating to /floating
-        grasp_path = grasp_path.replace("_floating", "/floating")
+    if cfg.legacy_api:
+        parts = grasp_path.split('/')
+        obj_id = parts[-2]
+        if obj_id.endswith("_floating"):
+            obj_id = obj_id.replace("_floating", "/floating")
+        elif obj_id.startswith("floating_"):
+            obj_id = obj_id.replace("floating_", "") + "/floating"
+        grasp_path = "/".join(parts[:-2] + [obj_id, parts[-1]])
     grasp_cfg, pregrasp_cfg = cfg.op.grasp, cfg.op.pregrasp
     debug_path = grasp_path.replace(cfg.grasp_dir, cfg.debug_dir)
 
@@ -442,9 +448,12 @@ def _single_grasp(param):
                   "obj_worldframe_contacts": "obj_cpn_w"
                   }
         grasp_data = {key_map.get(k, k): v for k, v in grasp_data.items()}
-        grasp_data['grasp_qpos'] = grasp_data['grasp_qpos'][None,...]
-        grasp_data['squeeze_qpos'] = grasp_data['squeeze_qpos'][None,...]
-        grasp_data['pregrasp_qpos'] = grasp_data['pregrasp_qpos'][None,...]
+        if 'grasp_qpos' in grasp_data:
+            grasp_data['grasp_qpos'] = grasp_data['grasp_qpos'][None,...]
+        if 'squeeze_qpos' in grasp_data:
+            grasp_data['squeeze_qpos'] = grasp_data['squeeze_qpos'][None,...]
+        if 'pregrasp_qpos' in grasp_data:
+            grasp_data['pregrasp_qpos'] = grasp_data['pregrasp_qpos'][None,...]
         # scene_cfg change to absolute path recursively
         def update_relative_path(d: dict):
             for k, v in d.items():
@@ -452,8 +461,17 @@ def _single_grasp(param):
                     update_relative_path(v)
                 elif k.endswith("_path") and isinstance(v, str):
                     d[k] = os.path.abspath(to_absolute_path(v))
+                elif isinstance(v, str) and v == 'rigid_mesh':
+                    d[k] = 'rigid_object'
             return
         update_relative_path(grasp_data['scene_cfg'])
+        if 'task' not in grasp_data['scene_cfg']:
+            grasp_data['scene_cfg']['task'] = {
+              'type': 'force_closure',
+              'obj_name': grasp_data['scene_cfg']['interest_obj_name']
+            }
+            grasp_data['ext_center'] = np.array(grasp_data['obj_gravity_center'])
+            grasp_data['ext_wrench'] = np.zeros(6)
         scene_cfg = grasp_data['scene_cfg']
     else:
         scene_cfg = load_scene_cfg(grasp_data["scene_path"])
@@ -529,6 +547,7 @@ def _single_grasp(param):
             # res_all.append(res.detach().item())
             # time_forward += time.time() - pre_time_forward
             # pre_time_backward = time.time()
+            if grasp_cfg.square_res: res = res**2
             res.backward()
             with torch.no_grad():
                 rho = grasp_cfg.rho_admm

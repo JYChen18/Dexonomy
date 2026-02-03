@@ -1,0 +1,36 @@
+# @package _global_
+# exp_name: all_new_shadow
+stage_name: init_data
+# legacy_api: True
+
+# output/horse_mu_01_shadow/succ_grasp/29_Stick/sem_Horse_de2eaf86f8ce18d68b3a450ac65b5b2d/floating/scale014/2_51_grasp.npy
+
+# exp_name: horse_mu_01_shadow
+# tmpl_name: 29_Stick
+# obj_name: sem_Horse_de2eaf86f8ce18d68b3a450ac65b5b2d
+# scale: 0.14
+# instance_name: 6_50_grasp
+
+# exp_name: camera_mu_01_shadow
+# tmpl_name: 4_Adducted_Thumb
+# obj_name: core_camera_21f65f53f74f1b58de8982fc28ddacc3
+# scale: 0.14
+# instance_name: 2_55_grasp
+
+# exp_name: camera_mu_01_shadow
+# tmpl_name: 5_Light_Tool
+# obj_name: core_camera_21f65f53f74f1b58de8982fc28ddacc3
+# scale: 0.11
+# instance_name: 2_37_grasp
+
+# exp_name: controller_mu_01_shadow
+# tmpl_name: 31_Ring
+# obj_name: sem_VideoGameController_6f790be92e6e44659bd828aa88bf7e51
+# scale: 0.17
+# instance_name: 6_14_grasp
+
+exp_name: camera_mu_01_shadow
+tmpl_name: 3_Medium_Wrap
+obj_name: core_camera_21f65f53f74f1b58de8982fc28ddacc3
+scale: 0.20
+instance_name: 0_48_grasp

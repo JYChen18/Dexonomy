@@ -1,0 +1,25 @@
+# @package _global_
+exp_name: all_new_allegro
+stage_name: init_data
+
+alpha: 1e-3
+num_step: 500
+
+# obj_name: core_bottle_5cbf1e8f31bae4cd67d1cb27b1ca00d7
+# tmpl_name: fingertip_large
+# scale: 0.17
+# instance_name: 0_82_grasp
+# # grasp_dir: '+x'
+# # grasp_dir_finger: '+z'
+# # init_offset: 0.1
+# grasp_dir: '+y'
+# grasp_dir_finger: '+z'
+# init_offset: 0.1
+
+obj_name: core_pillow_2fe82cff107cbeaeb357233991a61d01
+tmpl_name: 18_Extension_Type
+scale: 0.11
+instance_name: 0_40_grasp
+grasp_dir: '+x'
+grasp_dir_finger: '+y'
+init_offset: 0.1

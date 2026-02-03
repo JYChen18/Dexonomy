@@ -2,7 +2,6 @@ import torch
 import numpy as np
 import scipy.sparse
 from qpsolvers import solve_qp
-# from quadprog import solve_qp
 
 def torch_normal_to_rot(normals: torch.Tensor):
     """
@@ -33,8 +32,7 @@ def solve_qp_numpy_interface(
     param2force = grasp_matrix @ E_matrix 
     flatten_param2force = np.transpose(param2force, (1, 0, 2)).reshape(6, -1)
     
-    r = 1.
-    P_matrix = flatten_param2force.T @ np.diag([1., 1., 1., r**2, r**2, r**2]) @ flatten_param2force
+    P_matrix = flatten_param2force.T @ flatten_param2force
     q_matrix = gravity @ flatten_param2force
     
     solution = solve_qp(
@@ -68,7 +66,7 @@ class ContactQPTorch:
 
         # - force <= - eps
         G_matrix[range(0, num_f_strength), range(0, num_f_strength)] = -1.0
-        # h_matrix[range(0, num_f_strength)] = - 1e-2
+        h_matrix[range(0, num_f_strength)] = - 1e-2
 
         # pressure <= 1
         for i in range(self.num_contact):
@@ -148,7 +146,6 @@ class ContactQPTorch:
         
         # E. 计算 Error
         total_wrench = torch.sum(contact_wrenches, dim=0) + gravity_torch
-        total_wrench[3:] = total_wrench[3:]
         wrench_error = torch.norm(total_wrench)
         
         # wrench_error = wrench_error**2

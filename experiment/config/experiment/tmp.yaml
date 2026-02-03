@@ -1,0 +1,9 @@
+# @package _global_
+# exp_name: all_new_shadow
+exp_name: tmp_shadow
+# stage_name: init_data
+tmpl_name: fingertip_large
+
+obj_name: core_bottle_5cbf1e8f31bae4cd67d1cb27b1ca00d7
+scale: 0.17
+instance_name: 0_80_grasp

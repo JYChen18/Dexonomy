@@ -1,0 +1,53 @@
+# @package _global_
+# exp_name: all_new_shadow
+exp_name: test_100_shadow
+stage_name: init_data
+legacy_api: True
+
+# tmpl_name: 3_Medium_Wrap
+# obj_name: core_bottle_f4851a2835228377e101b7546e3ee8a7
+# instance_name: 0_40_grasp
+
+# tmpl_name: 3_Medium_Wrap
+# obj_name: 23c022ef0eb94ae09372bc08857c458b
+# instance_name: 0_15_grasp
+
+tmpl_name: 3_Medium_Wrap
+obj_name: 980d648049bd43329f4662b2f8e7c575
+instance_name: 0_42_grasp
+
+# tmpl_name: 15_Fixed_Hook
+# obj_name: 17ce8e09fddb45a284ede78bbc1896ea
+# instance_name: 1_33_grasp
+
+# tmpl_name: 15_Fixed_Hook
+# obj_name: d3c0f0c5abb6468b97a8d511a6049413
+# instance_name: 4_2_grasp
+
+# tmpl_name: 15_Fixed_Hook
+# obj_name: mujoco_Schleich_Bald_Eagle
+# instance_name: 0_4_grasp
+
+# tmpl_name: 10_Power_Disk
+# obj_name: 16292cb97c794404ba34d97092c4763b
+# instance_name: 7_55_grasp
+
+# tmpl_name: 15_Fixed_Hook
+# obj_name: sem_FoodItem_198d36bcfacb1a7a4212ff51b27f0221
+# instance_name: 5_11_grasp
+
+# tmpl_name: 11_Power_Sphere
+# obj_name: sem_Clock_1944938643bdb1dd56538cee362f80d0
+# instance_name: 4_5_grasp
+
+# tmpl_name: 12_Precision_Disk
+# obj_name: sem_Telephone_4e31c3e9575d744b916bc112690303c9
+# instance_name: 9_24_grasp
+
+# tmpl_name: 13_Precision_Sphere
+# obj_name: mujoco_AllergenFree_JarroDophilus
+# instance_name: 7_80_grasp
+
+# tmpl_name: 27_Quadpod
+# obj_name: mujoco_Ecoforms_Plant_Saucer_S20MOCHA
+# instance_name: 4_46_grasp

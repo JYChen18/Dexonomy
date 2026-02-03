@@ -1,0 +1,13 @@
+# @package _global_
+exp_name: exp_A_final_allegro
+stage_name: init_data
+
+# tmpl_name: fingertip_mid
+# obj_name: core_bottle_1f1e747bfce16fe0589ac2c115a083f1
+# scale: 0.08
+# instance_name: 0_42_grasp
+
+# tmpl_name: fingertip_mid
+# obj_name: core_pistol_b86cc2e83384030d91e284193311f752
+# scale: 0.20
+# instance_name: 0_4_grasp

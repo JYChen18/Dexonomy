@@ -421,8 +421,6 @@ class ContactQPTorch:
         total_wrench = torch.sum(contact_wrenches, dim=0) + gravity_torch
         wrench_error = torch.norm(total_wrench)
         
-        wrench_error = wrench_error**2
-        
         return wrench_error
 
 # class ContactQPCVX:

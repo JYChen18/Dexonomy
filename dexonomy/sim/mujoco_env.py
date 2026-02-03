@@ -656,7 +656,7 @@ class MuJoCo_OptEnv(MuJoCo_BaseEnv):
             o_cp_w = obj_cp_w[i, :3]
             contact_diffs.append(np.linalg.norm(o_cp_w - h_cp_w))
             delta_tangent = o_cp_w - h_cp_w
-            spring_force = delta_tangent * 1e3
+            spring_force = delta_tangent * 5e2
             mujoco.mj_applyFT(
                 self._model,
                 self._data,

@@ -71,7 +71,10 @@ def get_obj_names(path_lst, template_name):
     obj_name_lst = []
     for p in path_lst:
         obj_name = os.path.dirname(p).split(template_name + "/")[1]
-        obj_name = obj_name.replace("_floating", "/floating")
+        if "_floating" in obj_name:
+            obj_name = obj_name.replace("_floating", "/floating")
+        elif "floating_" in obj_name:
+            obj_name = obj_name.replace("floating_", "") + "/floating"
         obj_name_lst.append(obj_name)
     return list(set(obj_name_lst))
 
@@ -100,9 +103,11 @@ def get_diversity(data_lst):
     grasp_qpos = torch.tensor(
         np.stack([d["grasp_qpos"][0, 7:] for d in data_lst], axis=0)
     ).float()
-    obj_poses = torch.tensor(
-        np.stack([d["obj_pose"] for d in data_lst], axis=0)
-    ).float()
+    # obj_poses = torch.tensor(
+    #     np.stack([d["obj_pose"] for d in data_lst], axis=0)
+    # ).float()
+    obj_poses = torch.zeros((len(data_lst), 7))
+    obj_poses[:, 3] = 1.
 
     obj_rot = torch_quaternion_to_matrix(obj_poses[:, 3:])
     hand_rot = torch_quaternion_to_matrix(grasp_poses[:, 3:])

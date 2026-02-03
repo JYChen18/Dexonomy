@@ -3,6 +3,7 @@ import multiprocessing
 import logging
 import glob
 import numpy as np
+from hydra.utils import to_absolute_path
 
 from dexonomy.sim import MuJoCo_OptEnv, MuJoCo_OptCfg, HandCfg
 from dexonomy.qp.qp_single import ContactQP
@@ -84,13 +85,58 @@ class GraspFilter:
 def _single_grasp(param):
     input_path, cfg = param[0], param[1]
     grasp_path = input_path.replace(cfg.init_dir, cfg.grasp_dir)
+    if cfg.legacy_api:
+        parts = grasp_path.split('/')
+        obj_id = parts[-2]
+        if obj_id.endswith("_floating"):
+            obj_id = obj_id.replace("_floating", "/floating")
+        elif obj_id.startswith("floating_"):
+            obj_id = obj_id.replace("floating_", "") + "/floating"
+        grasp_path = "/".join(parts[:-2] + [obj_id, parts[-1]])
     grasp_cfg, pregrasp_cfg = cfg.op.grasp, cfg.op.pregrasp
     debug_path = input_path.replace(cfg.init_dir, cfg.debug_dir)
 
     grasp_data = np.load(input_path, allow_pickle=True).item()
+    if cfg.legacy_api:
+        key_map = {"evolution_num": "n_evo",
+                  "hand_type": "hand_name",
+                  "hand_template_name": "tmpl_name",
+                  "hand_worldframe_contacts": "hand_cpn_w",
+                  "hand_contact_body_names": "hand_cbody",
+                  "necessary_contact_body_names": "required_cbody",
+                  "obj_worldframe_contacts": "obj_cpn_w"
+                  }
+        grasp_data = {key_map.get(k, k): v for k, v in grasp_data.items()}
+        if 'grasp_qpos' in grasp_data:
+            grasp_data['grasp_qpos'] = grasp_data['grasp_qpos'][None,...]
+        if 'squeeze_qpos' in grasp_data:
+            grasp_data['squeeze_qpos'] = grasp_data['squeeze_qpos'][None,...]
+        if 'pregrasp_qpos' in grasp_data:
+            grasp_data['pregrasp_qpos'] = grasp_data['pregrasp_qpos'][None,...]
+        # scene_cfg change to absolute path recursively
+        def update_relative_path(d: dict):
+            for k, v in d.items():
+                if isinstance(v, dict):
+                    update_relative_path(v)
+                elif k.endswith("_path") and isinstance(v, str):
+                    d[k] = os.path.abspath(to_absolute_path(v))
+                elif isinstance(v, str) and v == 'rigid_mesh':
+                    d[k] = 'rigid_object'
+            return
+        update_relative_path(grasp_data['scene_cfg'])
+        if 'task' not in grasp_data['scene_cfg']:
+            grasp_data['scene_cfg']['task'] = {
+              'type': 'force_closure',
+              'obj_name': grasp_data['scene_cfg']['interest_obj_name']
+            }
+            grasp_data['ext_center'] = np.array(grasp_data['obj_gravity_center'])
+            grasp_data['ext_wrench'] = np.zeros(6)
+        scene_cfg = grasp_data['scene_cfg']
+    else:
+        scene_cfg = load_scene_cfg(grasp_data["scene_path"])
     sim_env = MuJoCo_OptEnv(
         hand_cfg=HandCfg(xml_path=cfg.hand.xml_path, freejoint=True),
-        scene_cfg=load_scene_cfg(grasp_data["scene_path"]),
+        scene_cfg=scene_cfg,
         sim_cfg=MuJoCo_OptCfg(obj_margin=pregrasp_cfg.cdist),
         debug_render=cfg.debug_render,
         debug_view=cfg.debug_view,

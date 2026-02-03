@@ -31,9 +31,12 @@ def _single_eval(param):
                       "obj_worldframe_contacts": "obj_cpn_w"
                       }
             grasp_data = {key_map.get(k, k): v for k, v in grasp_data.items()}
-            grasp_data['grasp_qpos'] = grasp_data['grasp_qpos'][None,...]
-            grasp_data['squeeze_qpos'] = grasp_data['squeeze_qpos'][None,...]
-            grasp_data['pregrasp_qpos'] = grasp_data['pregrasp_qpos'][None,...]
+            if 'grasp_qpos' in grasp_data:
+                grasp_data['grasp_qpos'] = grasp_data['grasp_qpos'][None,...]
+            if 'squeeze_qpos' in grasp_data:
+                grasp_data['squeeze_qpos'] = grasp_data['squeeze_qpos'][None,...]
+            if 'pregrasp_qpos' in grasp_data:
+                grasp_data['pregrasp_qpos'] = grasp_data['pregrasp_qpos'][None,...]
             # scene_cfg change to absolute path recursively
             def update_relative_path(d: dict):
                 for k, v in d.items():
