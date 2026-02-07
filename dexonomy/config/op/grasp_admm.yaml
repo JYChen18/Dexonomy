@@ -8,8 +8,7 @@ grasp:
   step_hand: 1
   rho_admm: 1e3
   lr_obj: 2e-4
-  square_res: False
-  # for shadow hand dexonomy
+  square_res: True
   # step: 100
   # rho_admm: 1e2
   # square_res: True
