@@ -1,19 +1,16 @@
 grasp:
-  device: "cpu"
+  device: "cpu" # only cpu for now
   gpus: [0, 1, 2, 3] # only used when device is cuda
   process_per_gpu: 4 # only used when device is cuda
-  step: 50
-  substep: 10
-  step_obj: 1
-  step_hand: 1
-  rho_admm: 1e3
-  lr_obj: 2e-4
-  square_res: True
-  # step: 100
-  # rho_admm: 1e2
-  # square_res: True
+  step: 50 # outer ADMM iterations, 100 for better quality
+  substep: 10 # simulator substeps
+  step_obj: 1 # object contact point steps in ADMM
+  step_hand: 1 # hand contact point steps in ADMM
+  rho_admm: 1e3 # rho in ADMM, 1e2 should also work
+  lr_obj: 2e-4 # object contact point learning rate
+  square_res: True # use squared force residual
   cdist: 0.001    # target hand-object contact distance
-  fix_hand_local_cp: False
+  fix_hand_local_cp: False # fix the hand contact points in local link frames
   opt_miu_coef: [0.1, 0]
   filter:
     limit:

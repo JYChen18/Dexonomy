@@ -508,24 +508,16 @@ def _single_grasp(param):
     lam.zero_()
     rho = grasp_cfg.rho_admm
     alpha = grasp_cfg.lr_obj
-    
-    
-    # time_step1 = 0.
-    # time_step2 = 0.
-    # time_forward = 0.
-    # time_backward = 0.
-    # res_all = []
+
     terminated = False
     for iter in range(grasp_cfg.step):
         cp = torch.zeros((NC, 3), requires_grad=True)
         with torch.no_grad(): cp[:] = cp_o
         # ADMM step 1
-        # pre_time = time.time()
         _, _, tri_vert, tri_norm = get_closest_triangles(
             obj_mesh, cp.detach().cpu().numpy(), obj_vert, obj_norm, obj_face
         )
         for ii in range(grasp_cfg.step_obj):
-            # pre_time_forward = time.time()
             cp.grad = None
             _, cp_o, cn_o = point_to_triangle_simple(
                 cp, tri_vert, tri_norm
@@ -544,10 +536,8 @@ def _single_grasp(param):
             except:
                 terminated = True
                 break
-            # res_all.append(res.detach().item())
-            # time_forward += time.time() - pre_time_forward
-            # pre_time_backward = time.time()
-            if grasp_cfg.square_res: res = res**2
+            if grasp_cfg.square_res or cfg.hand_name == "shadow": # trick
+                res = res**2
             res.backward()
             with torch.no_grad():
                 rho = grasp_cfg.rho_admm
@@ -558,12 +548,8 @@ def _single_grasp(param):
                 closest, _, tri_vert, tri_norm = get_closest_triangles(obj_mesh, cp.detach().cpu().numpy(), obj_vert, obj_norm, obj_face)
                 cp.copy_(torch.from_numpy(closest))
                 cp_o[:] = cp
-            # time_backward += time.time() - pre_time_backward
-        # end_time = time.time()
-        # time_step1 += end_time - pre_time
         if terminated: break
         # ADMM step 2
-        # pre_time = time.time()
         with torch.no_grad():
             cp = cp_o - lam
             if not grasp_cfg.fix_hand_local_cp:
@@ -577,10 +563,6 @@ def _single_grasp(param):
                 continue
             else:
                 prev_diff = np.copy(curr_diff)
-            # if grasp_filter.early_stop():
-            #     break
-        # end_time = time.time()
-        # time_step2 += end_time - pre_time
         # ADMM step 3
         with torch.no_grad():
             cpn_h = sim_env.transform_cpn_b2w(hand_cbody, hand_cpn_b)
@@ -588,7 +570,6 @@ def _single_grasp(param):
             dist = (cp_h - cp_o)
             lam_norm = torch.linalg.norm(lam, dim=-1, keepdim=True)
             condition = lam_norm > 2e-2
-            # condition = (dist.abs() > 1e-2) & (lam.abs() > 5e-2)
             lam = lam + dist
             lam = torch.where(condition, 0., lam)
 
@@ -608,11 +589,6 @@ def _single_grasp(param):
                 break
     
     grasp_data["grasp_qpos"] = np_array32(sim_env.get_hand_qpos())[None]
-
-    # print(f"Time step 1: {time_step1:.3f}, Time step 2: {time_step2:.3f}")
-    # print(f"Time forward: {time_forward:.3f}, Time backward: {time_backward:.3f}")
-    # print(input_path)
-    # print(res_all[-1])
 
     succ_flag, ho_c = grasp_filter.forward(grasp_data)
     grasp_data["ho_c"] = ho_c
