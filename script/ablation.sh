@@ -1,3 +1,0 @@
-dexsyn_admm exp_name=01_27_rho_1e1 tmpl_name=[fingertip_small,fingertip_mid] hand=allegro +init.object.n_cfg=1000 +init_gpu=[0,1,2,3,4,5,6,7] +init.epoch=1 +grasp_admm.grasp.step=50 +grasp_admm.grasp.rho_admm=1e1
-
-dexsyn_admm exp_name=01_27_rho_1e3 tmpl_name=[fingertip_small,fingertip_mid] hand=allegro +init.object.n_cfg=1000 +init_gpu=[0,1,2,3,4,5,6,7] +init.epoch=1 +grasp_admm.grasp.step=50 +grasp_admm.grasp.rho_admm=1e3

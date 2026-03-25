@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "dexonomy"
 description = "Dexonomy: Synthesizing All Dexterous Grasp Types in a Grasp Taxonomy"
-version = "0.2"
+version = "0.0.1"
 authors = [{name = "Jiayi Chen", email = "jiayichen@pku.edu.cn"}]
 dependencies = [
     "torch>=2.5.0",

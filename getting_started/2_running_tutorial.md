@@ -6,7 +6,7 @@ To convert annotated files into valid grasp templates, run:
 ```bash
 dexrun op=tmpl hand=allegro
 ```
-- Results are saved to: `init_template_dir` (default: `assets/hand/allegro/init_template`) defined in [dexonomy/config/base.yaml](https://github.com/JYChen18/Dexonomy/blob/main/dexonomy/config/base.yaml#L23)
+- Results are saved to: `init_tmpl_dir` (default: `assets/hand/allegro/init_tmpl`) defined in [dexonomy/config/base.yaml](https://github.com/JYChen18/Dexonomy/blob/main/dexonomy/config/base.yaml#L23)
 
 ## Grasp Synthesis
 Grasp synthesis consists of three core ops: `init`, `grasp`, and `test`.
@@ -48,13 +48,13 @@ This op evaluates the synthesized grasps in simulation. Currently, it only suppo
 dexrun op=eval hand=allegro exp_name=first_try
 ```
 - Successful grasps are saved to: `succ_grasp_dir` (default: `output/first_try_allegro/succ_grasp`)
-- New grasp templates are saved to: `new_template_dir` (default: `output/first_try_allegro/new_template`)
+- New grasp templates are saved to: `new_tmpl_dir` (default: `output/first_try_allegro/new_tmpl`)
 - The same debugging options as in `grasp` are also available here.
 
 ### 4. `dexonomy.script`: Run All Three ops Together
 You can run all above three ops (`init`, `grasp`, `eval`) together using:  
 ```bash
-dexsyn hand=allegro exp_name=first_try 'template_name=[fingertip_small,fingertip_mid,fingertip_large]' 'init_gpu=[5,6,7]'
+dexsyn hand=allegro exp_name=first_try 'tmpl_name=[fingertip_small,fingertip_mid,fingertip_large]' 'init_gpu=[5,6,7]'
 ```
 - `init` will distribute multiple templates across GPUs in `init_gpu` and run in parallel.
 - `grasp` and `eval` will automatically check and run as soon as there are unprocessed data from previous stage.
@@ -62,7 +62,7 @@ dexsyn hand=allegro exp_name=first_try 'template_name=[fingertip_small,fingertip
 #### Customize Configurations
 You can override configuration parameters per op like:
 ```bash
-dexsyn hand=allegro exp_name=first_try 'template_name=[fingertip_small,fingertip_mid,fingertip_large]' 'init_gpu=[5,6,7]' +init.object.n_cfg=20 '+grasp.grasp.qp_filter.miu_coef=[0.5, 0.02]'
+dexsyn hand=allegro exp_name=first_try 'tmpl_name=[fingertip_small,fingertip_mid,fingertip_large]' 'init_gpu=[5,6,7]' +init.object.n_cfg=20 '+grasp.grasp.qp_filter.miu_coef=[0.5, 0.02]'
 ```
 
 

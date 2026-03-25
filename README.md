@@ -1,8 +1,6 @@
-# Dexonomy
+# Dexonomy [RSS 2025]
 
-Official implementation of *Dexonomy: Synthesizing All Dexterous Grasp Types in a Grasp Taxonomy* [RSS 2025]. 
-
-[Project Page](https://pku-epic.github.io/Dexonomy) | [Paper](https://arxiv.org/abs/2504.18829) | [Dataset](https://huggingface.co/datasets/JiayiChenPKU/Dexonomy/tree/main) | [UI Demo](https://gfrl.github.io/DexAnno/) | [Learning](https://github.com/JYChen18/DexLearn)
+[Project Page](https://pku-epic.github.io/Dexonomy) | [Paper](https://arxiv.org/abs/2504.18829) | [Dataset](https://huggingface.co/datasets/JiayiChenPKU/Dexonomy/tree/main) | [Learning](https://github.com/JYChen18/DexLearn)
 
 ## Overview
 
@@ -18,16 +16,17 @@ Our algorithm synthesizes **contact-rich, penetration-free, and physically plaus
 All starting from just **one** human-annotated template *per hand and grasp type*.
 
 #### Supported Features
-- Hands: Shadow, Allegro, Leap, MANO, Inspire, Unitree_G1
+- Hands: Shadow, Allegro, Leap, MANO, Unitree_G1
 - Object Scenes: Single (floating & tabletop), Clustered (light clutter)
 - Object Assets: Rigid objects (ShapeNet & Objaverse), Articulated objects (PartNet)
 - Physics Simulator: MuJoCo
 - Grasping Trajectory Synthesis: cuRobo integration
-- Manipulation tasks: ...
+
+TODO: add scene_cfg examples for articulated objects and clutter scenes.
 
 
 ## Installation
-Our code is tested on **Ubuntu 20.04** with **NVIDIA GeForce RTX 3090** GPUs and **Intel(R) Xeon(R) Platinum 8255C** CPUs.
+Our code is tested on **Ubuntu 20.04** with **NVIDIA RTX 3090** GPUs.
 
 ```bash
 git submodule update --init --recursive --progress
@@ -35,9 +34,9 @@ git submodule update --init --recursive --progress
 conda create -n dexonomy python=3.10 
 conda activate dexonomy
 
-conda install pytorch==2.5.0 pytorch-cuda=12.1 -c pytorch -c nvidia 
+# conda install pytorch==2.5.0 pytorch-cuda=12.1 -c pytorch -c nvidia 
 
-# [Optional] Only necessary for grasping trajectory synthesis
+# [Optional] Only for collision-free grasping trajectory synthesis
 sudo apt install git-lfs
 cd third_party/BODex
 git lfs pull

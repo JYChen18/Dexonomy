@@ -17,8 +17,9 @@ def _single_eval(param):
     op_cfg, hand_cfg = cfg.op, cfg.hand
     grasp_data = np.load(input_path, allow_pickle=True).item()
     
-    # start from grasp pose rather than pre grasp pose
-    grasp_data["pregrasp_qpos"] = grasp_data["grasp_qpos"].copy()
+    if cfg.skip_pregrasp:
+        # start from grasp pose rather than pre grasp pose
+        grasp_data["pregrasp_qpos"] = grasp_data["grasp_qpos"].copy()
     
     if cfg.legacy_api:
         if "evolution_num" in grasp_data:

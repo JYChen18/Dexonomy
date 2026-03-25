@@ -3,4 +3,4 @@
 	url = git@github.com:google-deepmind/mujoco_menagerie.git
 [submodule "third_party/BODex"]
 	path = third_party/BODex
-	url = git@github.com:JYChen18/BODex-private.git
+	url = git@github.com:JYChen18/BODex.git

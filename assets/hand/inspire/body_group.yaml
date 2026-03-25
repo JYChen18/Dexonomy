@@ -1,8 +1,0 @@
-body_group: [
-  [R_thumb_proximal,R_thumb_intermediate,R_thumb_distal],
-  [R_index_proximal,R_index_intermediate],
-  [R_middle_proximal,R_middle_intermediate],
-  [R_ring_proximal,R_ring_intermediate],
-  [R_pinky_proximal,R_pinky_intermediate],
-  [R_hand_base_link]
-]

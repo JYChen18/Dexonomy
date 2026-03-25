@@ -1,3 +1,21 @@
+# GraspADMM
+
+[Paper](https://arxiv.org/abs/2603.13832)
+
+This work improves the original hand pose optimization stage (i.e., `op=grasp`) in Dexonomy by an ADMM-based approach (i.e., `op=grasp_admm`).
+
+## Run
+
+Run pipeline:
+```sh
+dexsyn_admm exp_name=test tmpl_name=[1_Large_Diameter,2_Small_Diameter,3_Medium_Wrap,4_Adducted_Thumb,5_Light_Tool,6_Prismatic_4_Finger,7_Prismatic_3_Finger,8_Prismatic_2_Finger] hand=shadow +init.object.n_cfg=100 init_gpu=[0,1,2,3,4,5,6,7]
+```
+
+Run single operation for hand pose optimization:
+```sh
+dexrun op=grasp_admm exp_name=test hand=shadow
+```
+
 ## File changes
 
 The core changes in the `dexonomy` folder are as follows:
@@ -22,16 +40,15 @@ The core changes in the `dexonomy` folder are as follows:
 * `script_admm.py`
   * the pipeline for generation with ADMM
 
-## To Run
 
-Run pipeline:
-```sh
-dexsyn_admm exp_name=test tmpl_name=[1_Large_Diameter,2_Small_Diameter,3_Medium_Wrap,4_Adducted_Thumb,5_Light_Tool,6_Prismatic_4_Finger,7_Prismatic_3_Finger,8_Prismatic_2_Finger] hand=shadow +init.object.n_cfg=100 +init_gpu=[0,1,2,3,4,5,6,7]
+## Citation
+
+If you find this work useful for your research, please consider citing:
 ```
-
-Run single operation:
-```sh
-dexrun op=grasp_admm 'exp_name=test' 'hand=shadow'
+@article{ruan2026graspadmm,
+  title={GraspADMM: Improving Dexterous Grasp Synthesis via ADMM Optimization},
+  author={Ruan, Liangwang and Chen, Jiayi and Wang, He and Chen, Baoquan},
+  journal={arXiv preprint arXiv:2603.13832},
+  year={2026}
+}
 ```
-
-

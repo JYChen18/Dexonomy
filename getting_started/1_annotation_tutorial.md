@@ -1,6 +1,5 @@
 # Annotation Tutorial
-This tutorial guides you through the process of adding a customized hand model and annotating the necessary components—particularly for the **initial grasp template** and **hand skeleton**.
-
+This tutorial guides you through the process of adding a customized hand model (let's call it `custom`) to Dexonomy, and annotating the necessary components—particularly for the **initial grasp template** and **hand skeleton**.
 
 ## Required Files
 | ID | File Path | Description |
@@ -27,7 +26,7 @@ We recommend starting with a hand model from the [MuJoCo Menagerie](https://gith
   - `kp = 1` may also work, but can lead to abnormal `squeeze qpos` due to the inverse PID control used to compute joint delta from desired force.
 
 - **Ignore `<option>` and remove `freejoint`:**  
-  These are handled programmatically via [MjSpec](https://mujoco.readthedocs.io/en/stable/programming/modeledit.html) in [mujoco_util.py](https://github.com/JYChen18/Dexonomy/blob/main/dexonomy/sim/mujoco_util.py#L52).
+  These are handled programmatically via [MjSpec](https://mujoco.readthedocs.io/en/stable/programming/modeledit.html) in [mujoco_env.py](https://github.com/JYChen18/Dexonomy/blob/main/dexonomy/sim/mujoco_env.py#L156).
 
 ---
 
@@ -54,6 +53,8 @@ Originially, every hand body with a contact annotation is required to be in cont
 
 ## File 4-5: Initial Grasp Template
 
+We are actively developing a more user-friendly annotation interface, which is expected to release in half a year. Currently, we recommend annotating in GUI.
+
 ### Annotate hand qpos in MuJoCo
 
 ![alt text](../img/tutorial_mujoco_gui.png)
@@ -71,6 +72,8 @@ dexrun hand=custom op=v3d task.data=init_tmpl
 ```
 
 ### Annotate contact points and normals in [CloudCompare](https://www.danielgm.net/cc/)
+
+We provide two options for annotating contact points and normals in CloudCompare:
 
 <details>
 
@@ -114,16 +117,16 @@ To visualize the annotated contacts:
 dexrun hand=custom op=tmpl
 dexrun hand=custom op=v3d task.data=init_tmpl task.hand.contact=True
 ```
-`anno2temp` will also automatically check for mismatches between annotated contact points and body names — a common issue in practice.
+`op=tmpl` will also automatically check for mismatches between annotated contact points and body names — a common issue in practice.
 
 **Important Notes:**
 - YAML files do not support duplicated keys. Therefore, if a link has multiple contact points, annotate them using a list format:
 ```yaml
 contact:
     rh_thdistal: 
-      - [0.034434,-0.086055,0.106385,0.425640,0.311104,0.849732]  # Option A
-      - 0   # Option B
-      - 1   # Option B
+      - [0.034434,-0.086055,0.106385,0.425640,0.311104,0.849732]  # Annotated in handframe (Option A)
+      - 0   # Annotated in bodyframe (Option B)
+      - 1   # Annotated in bodyframe (Option B)
 ```
 
 ## File 6: Hand Skeleton

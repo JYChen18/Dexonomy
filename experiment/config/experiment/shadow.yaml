@@ -1,8 +1,0 @@
-# @package _global_
-exp_name: all_old_shadow
-stage_name: init_data
-tmpl_name: 1_Large_Diameter
-
-obj_name: ddg_gd_mushroom_poisson_006
-scale: 0.14
-instance_name: 0_32_grasp
