@@ -15,7 +15,7 @@ Our algorithm synthesizes **contact-rich, penetration-free, and physically plaus
 
 All starting from just **one** human-annotated template *per hand and grasp type*.
 
-#### Supported Features
+## Supported Features
 - Hands: Shadow, Allegro, Leap, MANO, Unitree_G1
 - Object Scenes: Single (floating & tabletop), Clustered (light clutter)
 - Object Assets: Rigid objects (ShapeNet & Objaverse), Articulated objects (PartNet)
