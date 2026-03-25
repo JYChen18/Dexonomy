@@ -1,4 +1,4 @@
-# Dexonomy [RSS 2025]
+# Dexonomy
 
 [Project Page](https://pku-epic.github.io/Dexonomy) | [Paper](https://arxiv.org/abs/2504.18829) | [Dataset](https://huggingface.co/datasets/JiayiChenPKU/Dexonomy/tree/main) | [Learning](https://github.com/JYChen18/DexLearn)
 
@@ -22,29 +22,28 @@ All starting from just **one** human-annotated template *per hand and grasp type
 - Physics Simulator: MuJoCo
 - Grasping Trajectory Synthesis: cuRobo integration
 
-TODO: add scene_cfg examples for articulated objects and clutter scenes.
+TODO: add scene_cfg examples for articulated objects, clutter scenes, and other tasks.
 
 
 ## Installation
-Our code is tested on **Ubuntu 20.04** with **NVIDIA RTX 3090** GPUs.
+Our code is tested on **Ubuntu 20.04** with **NVIDIA RTX 3090** GPUs. 
 
 ```bash
 git submodule update --init --recursive --progress
 
 conda create -n dexonomy python=3.10 
 conda activate dexonomy
+pip install -e .
+```
 
-# conda install pytorch==2.5.0 pytorch-cuda=12.1 -c pytorch -c nvidia 
+(Optional) BODex is only used for collision-free grasping trajectory synthesis. Currently, we only provide support for UR10e + shadow hand.
 
-# [Optional] Only for collision-free grasping trajectory synthesis
-sudo apt install git-lfs
+```bash
 cd third_party/BODex
+sudo apt install git-lfs
 git lfs pull
 pip install -e . --no-build-isolation
 cd ...
-
-# Install this package
-pip install -e .
 ```
 
 ## Quick Start
