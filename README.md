@@ -40,9 +40,11 @@ pip install -e .
 
 ```bash
 cd third_party/BODex
-sudo apt install git-lfs
 git lfs pull
+# install BODex
 pip install -e . --no-build-isolation
+# link to dexonomy's object folder
+ln -s ../../../../../../assets/object src/curobo/content/assets/object  
 cd ...
 ```
 
